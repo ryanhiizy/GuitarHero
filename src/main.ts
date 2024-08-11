@@ -36,6 +36,8 @@ const Note = {
     TAIL_WIDTH: 10,
 };
 
+const MAX_MIDI_VELOCITY = 127;
+
 /** User input */
 
 type Key = "KeyH" | "KeyJ" | "KeyK" | "KeyL";
@@ -70,6 +72,19 @@ const formatLine = (line: string): csvLine => {
 
 const parseCSV = (csvContents: string): ReadonlyArray<csvLine> => {
     return csvContents.trim().split("\n").slice(1).map(formatLine);
+};
+
+const playNote = (
+    line: csvLine,
+    samples: { [key: string]: Tone.Sampler },
+    delay: number | undefined = undefined,
+) => {
+    samples[line.instrument_name].triggerAttackRelease(
+        Tone.Frequency(line.pitch, "midi").toNote(),
+        line.end - line.start,
+        delay,
+        line.velocity / MAX_MIDI_VELOCITY,
+    );
 };
 
 /** State processing */
@@ -232,14 +247,7 @@ export function main(
         mergeMap((line) =>
             of(line).pipe(
                 delay(line.start * 1000),
-                map(() =>
-                    samples[line.instrument_name].triggerAttackRelease(
-                        Tone.Frequency(line.pitch, "midi").toNote(),
-                        line.end - line.start,
-                        undefined,
-                        line.velocity / 127,
-                    ),
-                ),
+                map(() => playNote(line, samples)),
             ),
         ),
     ).subscribe();
