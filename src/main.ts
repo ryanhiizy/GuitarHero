@@ -42,7 +42,35 @@ type Key = "KeyH" | "KeyJ" | "KeyK" | "KeyL";
 
 type Event = "keydown" | "keyup" | "keypress";
 
+/** Types */
+
+type csvLine = Readonly<{
+    user_played: boolean;
+    instrument_name: string;
+    velocity: number;
+    pitch: number;
+    start: number;
+    end: number;
+}>;
+
 /** Utility functions */
+
+const formatLine = (line: string): csvLine => {
+    const [user_played, instrument_name, velocity, pitch, start, end] =
+        line.split(",");
+    return {
+        user_played: user_played === "True",
+        instrument_name,
+        velocity: parseInt(velocity),
+        pitch: parseInt(pitch),
+        start: parseFloat(start),
+        end: parseFloat(end),
+    };
+};
+
+const parseCSV = (csvContents: string): ReadonlyArray<csvLine> => {
+    return csvContents.trim().split("\n").slice(1).map(formatLine);
+};
 
 /** State processing */
 
@@ -198,24 +226,7 @@ export function main(
             }
         });
 
-    const csv = csvContents
-        .trim()
-        .split("\n")
-        .slice(1)
-        .map((line) => {
-            const [user_played, instrument_name, velocity, pitch, start, end] =
-                line.split(",");
-            return {
-                user_played: user_played === "True",
-                instrument_name,
-                velocity: parseInt(velocity),
-                pitch: parseInt(pitch),
-                start: parseFloat(start),
-                end: parseFloat(end),
-            };
-        });
-
-    const csv$ = from(csv);
+    const csv$ = from(parseCSV(csvContents));
 
     csv$.pipe(
         mergeMap((line) =>
