@@ -14,8 +14,8 @@
 
 import "./style.css";
 
-import { fromEvent, interval, merge } from "rxjs";
-import { map, filter, scan } from "rxjs/operators";
+import { from, fromEvent, interval, merge, of } from "rxjs";
+import { map, filter, scan, mergeMap, delay } from "rxjs/operators";
 import * as Tone from "tone";
 import { SampleLibrary } from "./tonejs-instruments";
 
@@ -214,6 +214,24 @@ export function main(
                 end: parseFloat(end),
             };
         });
+
+    const csv$ = from(csv);
+
+    csv$.pipe(
+        mergeMap((line) =>
+            of(line).pipe(
+                delay(line.start * 1000),
+                map(() =>
+                    samples[line.instrument_name].triggerAttackRelease(
+                        Tone.Frequency(line.pitch, "midi").toNote(),
+                        line.end - line.start,
+                        undefined,
+                        line.velocity / 127,
+                    ),
+                ),
+            ),
+        ),
+    ).subscribe();
 }
 
 // The following simply runs your main function on window load.  Make sure to leave it in place.
