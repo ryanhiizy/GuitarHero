@@ -197,6 +197,23 @@ export function main(
                 hide(gameover);
             }
         });
+
+    const csv = csvContents
+        .trim()
+        .split("\n")
+        .slice(1)
+        .map((line) => {
+            const [user_played, instrument_name, velocity, pitch, start, end] =
+                line.split(",");
+            return {
+                user_played: user_played === "True",
+                instrument_name,
+                velocity: parseInt(velocity),
+                pitch: parseInt(pitch),
+                start: parseFloat(start),
+                end: parseFloat(end),
+            };
+        });
 }
 
 // The following simply runs your main function on window load.  Make sure to leave it in place.
