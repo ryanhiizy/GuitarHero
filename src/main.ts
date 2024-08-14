@@ -13,20 +13,29 @@
  */
 
 import "./style.css";
-
-import { from, fromEvent, interval, merge, of } from "rxjs";
+import {
+  from,
+  fromEvent,
+  interval,
+  merge,
+  Observable,
+  of,
+  Subscription,
+} from "rxjs";
 import { map, filter, scan, mergeMap, delay } from "rxjs/operators";
 import * as Tone from "tone";
 import { SampleLibrary } from "./tonejs-instruments";
-import { Constants, Note, Viewport, csvLine, Key, Event } from "./types";
-import { createSvgElement, hide, show } from "./view";
+import { Constants, Key, Event, State, Action } from "./types";
+import { updateView } from "./view";
+import { parseCSV, getColumn } from "./util";
 import {
-  formatLine,
-  parseCSV,
-  playNote,
-  getColumn,
+  initialState,
+  Tick,
+  reduceState,
+  Placeholder,
+  CreateCircle,
   createCircle,
-} from "./util";
+} from "./state";
 
 /**
  * This is the function called on page load. Your main game loop
@@ -36,116 +45,59 @@ export function main(
   csvContents: string,
   samples: { [key: string]: Tone.Sampler },
 ) {
-  // Parse the CSV file
-  const csv = parseCSV(csvContents);
-  const csv$ = from(csv);
-
-  // Determine the pitch range and column size
-  const pitches = csv.map((line) => line.pitch);
-  const minPitch = Math.min(...pitches);
-  const maxPitch = Math.max(...pitches);
-  const columnSize = Math.ceil(
-    (maxPitch - minPitch) / Constants.NUMBER_OF_COLUMNS,
+  const gameClock$ = interval(Constants.TICK_RATE_MS).pipe(
+    map((elapsed) => {
+      const elapsedMilliseconds = (elapsed + 1) * 10;
+      return new Tick(elapsedMilliseconds);
+    }),
   );
 
-  // Canvas elements
-  const svg = document.querySelector("#svgCanvas") as SVGGraphicsElement &
-    HTMLElement;
-  const preview = document.querySelector("#svgPreview") as SVGGraphicsElement &
-    HTMLElement;
-  const gameover = document.querySelector("#gameOver") as SVGGraphicsElement &
-    HTMLElement;
-  const container = document.querySelector("#main") as HTMLElement;
+  const csv = parseCSV(csvContents);
 
-  svg.setAttribute("height", `${Viewport.CANVAS_HEIGHT}`);
-  svg.setAttribute("width", `${Viewport.CANVAS_WIDTH}`);
+  const createCircles$ = from(csv).pipe(
+    mergeMap((line, index) =>
+      of(line).pipe(
+        delay(Math.round(line.start * 100) * 10),
+        // filter((line) => line.user_played),
+        map((line) => {
+          const roundStart = Math.round(line.start * 100) * 10;
+          const column = getColumn(line.pitch);
+          const x = column * Constants.COLUMN_WIDTH;
+          const circle = createCircle(index)(column)(roundStart)(line)(x)(0);
+          return new CreateCircle(circle);
+        }),
+      ),
+    ),
+  );
 
-  // Text fields
-  const multiplier = document.querySelector("#multiplierText") as HTMLElement;
-  const scoreText = document.querySelector("#scoreText") as HTMLElement;
-  const highScoreText = document.querySelector("#highScoreText") as HTMLElement;
+  const key$ = (e: Event, k: Key) =>
+    fromEvent<KeyboardEvent>(document, e).pipe(
+      filter(({ code }) => code === k),
+      filter(({ repeat }) => !repeat),
+    );
 
-  /** User input */
+  const keyOne$ = key$("keydown", "KeyH").pipe(map(() => new Placeholder()));
+  const keyTwo$ = key$("keydown", "KeyJ").pipe(map(() => new Placeholder()));
+  const keyThree$ = key$("keydown", "KeyK").pipe(map(() => new Placeholder()));
+  const keyFour$ = key$("keydown", "KeyL").pipe(map(() => new Placeholder()));
 
-  const key$ = fromEvent<KeyboardEvent>(document, "keypress");
+  const action$: Observable<Action> = merge(
+    gameClock$,
+    createCircles$,
+    keyOne$,
+    keyTwo$,
+    keyThree$,
+    keyFour$,
+  );
 
-  const fromKey = (keyCode: Key) =>
-    key$.pipe(filter(({ code }) => code === keyCode));
+  const state$: Observable<State> = action$.pipe(
+    scan(reduceState, initialState),
+  );
 
-  /** Determines the rate of time steps */
-  const tick$ = interval(Constants.TICK_RATE_MS);
-
-  /**
-   * Renders the current state to the canvas.
-   *
-   * In MVC terms, this updates the View using the Model.
-   *
-   * @param s Current state
-   */
-  const render = (s: State) => {
-    // Add blocks to the main grid canvas
-    const greenCircle = createSvgElement(svg.namespaceURI, "circle", {
-      r: `${Note.RADIUS}`,
-      cx: "20%",
-      cy: "0",
-      style: "fill: green",
-      class: "shadow",
-    });
-
-    const redCircle = createSvgElement(svg.namespaceURI, "circle", {
-      r: `${Note.RADIUS}`,
-      cx: "40%",
-      cy: "0",
-      style: "fill: red",
-      class: "shadow",
-    });
-
-    const blueCircle = createSvgElement(svg.namespaceURI, "circle", {
-      r: `${Note.RADIUS}`,
-      cx: "60%",
-      cy: "0",
-      style: "fill: blue",
-      class: "shadow",
-    });
-
-    const yellowCircle = createSvgElement(svg.namespaceURI, "circle", {
-      r: `${Note.RADIUS}`,
-      cx: "80%",
-      cy: "0",
-      style: "fill: yellow",
-      class: "shadow",
-    });
-
-    csv$
-      .pipe(
-        mergeMap((line) =>
-          of(line).pipe(
-            delay((line.start - 1) * 1000),
-            map(() => {
-              const column = getColumn(line.pitch, minPitch, columnSize);
-
-              const circle = createCircle(column, svg);
-
-              svg.appendChild(circle);
-            }),
-            map(() => playNote(line, samples)),
-          ),
-        ),
-      )
-      .subscribe();
-  };
-
-  const source$ = tick$
-    .pipe(scan((s: State) => ({ gameEnd: false }), initialState))
-    .subscribe((s: State) => {
-      render(s);
-
-      if (s.gameEnd) {
-        show(gameover);
-      } else {
-        hide(gameover);
-      }
-    });
+  const updateViewWithArgs = updateView(csvContents)(samples);
+  const subscription: Subscription = state$.subscribe(
+    updateViewWithArgs(() => subscription.unsubscribe()),
+  );
 }
 
 // The following simply runs your main function on window load.  Make sure to leave it in place.
