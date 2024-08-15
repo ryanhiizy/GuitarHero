@@ -5,9 +5,10 @@ export {
   Placeholder,
   CreateCircle,
   createCircle,
+  ClickCircle,
 };
 
-import { Action, State, Circle, csvLine } from "./types";
+import { Action, State, Circle, csvLine, Key, Constants } from "./types";
 import { not } from "./util";
 
 ///////////////////
@@ -35,6 +36,7 @@ const createCircle =
       y,
       column,
       start,
+      isHit: false,
       note,
     };
   };
@@ -50,7 +52,7 @@ class Tick implements Action {
 
   apply(s: State): State {
     const expired = (circle: Circle) => {
-      return circle.y >= 350;
+      return circle.y >= 400;
     };
     const expiredCircles = s.circles.filter(expired);
     const activeCircles = s.circles.filter(not(expired));
@@ -82,7 +84,42 @@ class CreateCircle implements Action {
   }
 }
 
-// class ClickCircle implements Action {}
+class ClickCircle implements Action {
+  constructor(public readonly key: Key) {}
+
+  apply(s: State): State {
+    console.log(this.key);
+
+    const column = Constants.COLUMN_KEYS.indexOf(this.key);
+    const columnCircles = s.circles.filter(
+      (circle) => circle.column === column,
+    );
+    const closeCircles = columnCircles.filter(
+      (circle) => Math.abs(circle.y - 350) <= 20,
+    );
+
+    if (closeCircles.length === 0) {
+      return s;
+    }
+
+    const closeValues = closeCircles.map((circle) => ({
+      value: Math.abs(circle.y - 350),
+      circle,
+    }));
+
+    const closestCircle = closeValues.reduce(
+      (acc, circle) => (circle.value < acc.value ? circle : acc),
+      closeValues[0],
+    );
+
+    return {
+      ...s,
+      score: s.score + 1,
+      circles: s.circles.filter((circle) => circle !== closestCircle.circle),
+      hitCircle: closestCircle.circle,
+    };
+  }
+}
 
 /**
  * state transducer
