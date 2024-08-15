@@ -6,7 +6,6 @@ export {
   CreateCircle,
   createCircle,
   ClickCircle,
-  UpdateNote,
 };
 
 import { Action, State, Circle, csvLine, Key, Constants } from "./types";
@@ -20,12 +19,15 @@ const initialState: State = {
   score: 0,
   time: 0,
   circles: [],
+  playableCircles: [],
+  backgroundCircles: [],
   exit: [],
   gameEnd: false,
 } as const;
 
 const createCircle =
   (id: number) =>
+  (userPlayed: boolean) =>
   (column: number) =>
   (start: number) =>
   (note: csvLine) =>
@@ -35,7 +37,9 @@ const createCircle =
       id,
       x,
       y,
+      userPlayed,
       column,
+      duration: 0,
       start,
       isHit: false,
       note,
@@ -52,16 +56,27 @@ class Tick implements Action {
   constructor(public readonly elapsed: number) {}
 
   apply(s: State): State {
-    const expired = (circle: Circle) => {
-      return circle.y >= 400;
-    };
-    const expiredCircles = s.circles.filter(expired);
-    const activeCircles = s.circles.filter(not(expired));
+    const tickCircles = s.circles.map((circle) => ({
+      ...circle,
+      duration: circle.duration + 10,
+    }));
+
+    const playableCircles = tickCircles.filter((circle) => circle.userPlayed);
+    const backgroundCircles = tickCircles.filter(
+      (circle) => !circle.userPlayed && circle.duration <= 1000,
+    );
+
+    const expired = (circle: Circle) => circle.y >= 375;
+    const expiredCircles = playableCircles.filter(expired);
+    const activeCircles = playableCircles.filter(not(expired));
+    const moveActiveCircles = activeCircles.map(Tick.moveCircle);
 
     return {
       ...s,
       time: this.elapsed,
-      circles: activeCircles.map(Tick.moveCircle),
+      circles: moveActiveCircles.concat(backgroundCircles),
+      playableCircles: activeCircles,
+      backgroundCircles: backgroundCircles,
       exit: expiredCircles,
     };
   }
@@ -89,46 +104,36 @@ class ClickCircle implements Action {
   constructor(public readonly key: Key) {}
 
   apply(s: State): State {
-    console.log(this.key);
-
     const column = Constants.COLUMN_KEYS.indexOf(this.key);
-    const columnCircles = s.circles.filter(
+    const columnCircles = s.playableCircles.filter(
       (circle) => circle.column === column,
     );
     const closeCircles = columnCircles.filter(
-      (circle) => Math.abs(circle.y - 350) <= 20,
+      (circle) => Math.abs(circle.y - 350) <= 25,
     );
 
     if (closeCircles.length === 0) {
       return s;
     }
 
-    const closeValues = closeCircles.map((circle) => ({
-      value: Math.abs(circle.y - 350),
-      circle,
-    }));
+    const closestCircle = closeCircles.reduce((closest, circle) => {
+      const closestDistance = Math.abs(closest.y - 350);
+      const distance = Math.abs(circle.y - 350);
+      return distance < closestDistance ? circle : closest;
+    });
 
-    const closestCircle = closeValues.reduce(
-      (acc, circle) => (circle.value < acc.value ? circle : acc),
-      closeValues[0],
+    const filteredCircles = s.playableCircles.filter(
+      (circle) => circle !== closestCircle,
     );
+
+    console.log(this.key);
 
     return {
       ...s,
       score: s.score + 1,
-      circles: s.circles.filter((circle) => circle !== closestCircle.circle),
-      hitCircle: closestCircle.circle,
-    };
-  }
-}
-
-class UpdateNote implements Action {
-  constructor(public readonly note: csvLine) {}
-
-  apply(s: State): State {
-    return {
-      ...s,
-      note: this.note,
+      circles: filteredCircles.concat(s.backgroundCircles),
+      playableCircles: filteredCircles,
+      hitCircle: closestCircle,
     };
   }
 }
