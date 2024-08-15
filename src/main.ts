@@ -21,6 +21,7 @@ import {
   Observable,
   of,
   Subscription,
+  timer,
 } from "rxjs";
 import {
   map,
@@ -35,10 +36,13 @@ import {
   tap,
   switchMap,
   withLatestFrom,
+  endWith,
+  takeWhile,
+  finalize,
 } from "rxjs/operators";
 import * as Tone from "tone";
 import { SampleLibrary } from "./tonejs-instruments";
-import { Constants, Key, Event, State, Action } from "./types";
+import { Constants, ClickKey, ExtraKey, Event, State, Action } from "./types";
 import { updateView } from "./view";
 import { parseCSV, getColumn } from "./util";
 import {
@@ -49,6 +53,7 @@ import {
   createCircle,
   ClickCircle,
   Restart,
+  GameEnd,
 } from "./state";
 
 /**
@@ -59,16 +64,16 @@ export function main(
   csvContents: string,
   samples: { [key: string]: Tone.Sampler },
 ) {
-  console.log("RUNNING");
-
   const csv = parseCSV(csvContents);
-  const pitches = csv.map((line) => line.pitch);
+  const pitches = csv
+    .filter((line) => line.userPlayed)
+    .map((line) => line.pitch);
   const minPitch = Math.min(...pitches);
   const maxPitch = Math.max(...pitches);
 
   const gameClock$ = interval(Constants.TICK_RATE_MS).pipe(
     map((elapsed) => {
-      const elapsedMilliseconds = elapsed * 10;
+      const elapsedMilliseconds = elapsed * Constants.TICK_RATE_MS;
       return new Tick(elapsedMilliseconds);
     }),
   );
@@ -78,21 +83,20 @@ export function main(
   const createCircles$ = csv$.pipe(
     mergeMap((line, index) =>
       of(line).pipe(
-        delay(Math.round(line.start * 100) * 10),
+        delay(line.start * Constants.S_TO_MS),
         map((line) => {
           const userPlayed = line.userPlayed;
-          const roundStart = Math.round(line.start * 100) * 10;
           const column = getColumn(minPitch)(maxPitch)(line.pitch);
           const x = (column + 1) * Constants.COLUMN_WIDTH;
-          const circle =
-            createCircle(index)(userPlayed)(column)(roundStart)(line)(x)(0);
+          const circle = createCircle(index)(userPlayed)(column)(line)(x)(0);
           return new CreateCircle(circle);
         }),
       ),
     ),
+    endWith(new GameEnd()),
   );
 
-  const key$ = (e: Event, k: Key) =>
+  const key$ = (e: Event, k: ClickKey | ExtraKey) =>
     fromEvent<KeyboardEvent>(document, e).pipe(
       filter(({ code }) => code === k),
       filter(({ repeat }) => !repeat),
@@ -100,23 +104,28 @@ export function main(
 
   // type assertion???
   const keyOne$ = key$("keydown", "KeyA").pipe(
-    map(({ code }) => new ClickCircle(code as Key)),
+    map(({ code }) => new ClickCircle(code as ClickKey)),
   );
   const keyTwo$ = key$("keydown", "KeyS").pipe(
-    map(({ code }) => new ClickCircle(code as Key)),
+    map(({ code }) => new ClickCircle(code as ClickKey)),
   );
   const keyThree$ = key$("keydown", "KeyK").pipe(
-    map(({ code }) => new ClickCircle(code as Key)),
+    map(({ code }) => new ClickCircle(code as ClickKey)),
   );
   const keyFour$ = key$("keydown", "KeyL").pipe(
-    map(({ code }) => new ClickCircle(code as Key)),
+    map(({ code }) => new ClickCircle(code as ClickKey)),
   );
 
   const resume$ = key$("keydown", "KeyO").pipe(map(() => true));
   const pause$ = key$("keydown", "KeyP").pipe(map(() => false));
   const pauseResume$ = merge(pause$, resume$).pipe(startWith(true));
 
-  const restart$ = key$("keydown", "KeyR").pipe(map(() => new Restart()));
+  const keyR$ = key$("keydown", "KeyR");
+  const restart$ = key$("keydown", "KeyR").pipe(
+    map(() => {
+      return new Restart();
+    }),
+  );
 
   const nonRestartActions$: Observable<Action> = merge(
     gameClock$,
@@ -141,12 +150,63 @@ export function main(
 
   const subscription: Subscription = state$.subscribe(
     updateViewWithArgs((restart: boolean) => {
+      subscription.unsubscribe();
       if (restart) {
         main(csvContents, samples);
+      } else {
+        const keyRSubscription = keyR$
+          .pipe(
+            concatMap((event) =>
+              of(event).pipe(tap(() => main(csvContents, samples))),
+            ),
+            tap(() => keyRSubscription.unsubscribe()),
+          )
+          .subscribe();
       }
-      subscription.unsubscribe();
     }),
   );
+
+  // type acc = Readonly<{
+  //   state: State;
+  //   count: number;
+  // }>;
+
+  // const subscription: Subscription = state$
+  //   .pipe(
+  //     tap((state) => console.log(state.gameEnd)),
+  //     scan(
+  //       (acc, state) => ({
+  //         state,
+  //         count: state.gameEnd ? acc.count + 1 : 0,
+  //       }),
+  //       { state: initialState, count: 0 } as acc,
+  //     ),
+  //     filter(({ count }) => count < 2),
+  //     map(({ state }) => state),
+  //   )
+  //   .subscribe(updateViewWithArgs(() => {}));
+}
+
+function showKeys() {
+  function showKey(k: ClickKey | ExtraKey) {
+    const arrowKey = document.getElementById(k);
+    // getElement might be null, in this case return without doing anything
+    if (!arrowKey) return;
+    const o = (e: Event) =>
+      fromEvent<KeyboardEvent>(document, e).pipe(
+        filter(({ code }) => code === k),
+      );
+    o("keydown").subscribe((e) => arrowKey.classList.add("highlight"));
+    o("keyup").subscribe((_) => arrowKey.classList.remove("highlight"));
+  }
+
+  showKey("KeyA");
+  showKey("KeyS");
+  showKey("KeyK");
+  showKey("KeyL");
+  showKey("KeyP");
+  showKey("KeyO");
+  showKey("KeyR");
 }
 
 // The following simply runs your main function on window load.  Make sure to leave it in place.
@@ -171,6 +231,7 @@ if (typeof window !== "undefined") {
       "mousedown",
       function () {
         main(contents, samples);
+        showKeys();
       },
       { once: true },
     );
