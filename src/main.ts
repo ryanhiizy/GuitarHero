@@ -36,6 +36,7 @@ import {
   CreateCircle,
   createCircle,
   ClickCircle,
+  UpdateNote,
 } from "./state";
 
 /**
@@ -77,7 +78,7 @@ export function main(
         of(line).pipe(
           delay(Math.round(line.start * 100) * 10 + 1000),
           filter((line) => !line.user_played),
-          map(playNote(samples)), // can I play notes here? side effects??
+          map((line) => new UpdateNote(line)),
         ),
       ),
     )
