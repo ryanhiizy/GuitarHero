@@ -165,26 +165,6 @@ export function main(
       }
     }),
   );
-
-  // type acc = Readonly<{
-  //   state: State;
-  //   count: number;
-  // }>;
-
-  // const subscription: Subscription = state$
-  //   .pipe(
-  //     tap((state) => console.log(state.gameEnd)),
-  //     scan(
-  //       (acc, state) => ({
-  //         state,
-  //         count: state.gameEnd ? acc.count + 1 : 0,
-  //       }),
-  //       { state: initialState, count: 0 } as acc,
-  //     ),
-  //     filter(({ count }) => count < 2),
-  //     map(({ state }) => state),
-  //   )
-  //   .subscribe(updateViewWithArgs(() => {}));
 }
 
 function showKeys() {
