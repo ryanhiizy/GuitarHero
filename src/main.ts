@@ -27,7 +27,7 @@ import * as Tone from "tone";
 import { SampleLibrary } from "./tonejs-instruments";
 import { Constants, Key, Event, State, Action } from "./types";
 import { updateView } from "./view";
-import { parseCSV, getColumn } from "./util";
+import { parseCSV, getColumn, playNote } from "./util";
 import {
   initialState,
   Tick,
@@ -35,6 +35,7 @@ import {
   Placeholder,
   CreateCircle,
   createCircle,
+  ClickCircle,
 } from "./state";
 
 /**
@@ -52,17 +53,17 @@ export function main(
     }),
   );
 
-  const csv = parseCSV(csvContents);
+  const csv$ = from(parseCSV(csvContents));
 
-  const createCircles$ = from(csv).pipe(
+  const createCircles$ = csv$.pipe(
     mergeMap((line, index) =>
       of(line).pipe(
         delay(Math.round(line.start * 100) * 10),
-        // filter((line) => line.user_played),
+        filter((line) => line.user_played),
         map((line) => {
           const roundStart = Math.round(line.start * 100) * 10;
           const column = getColumn(line.pitch);
-          const x = column * Constants.COLUMN_WIDTH;
+          const x = (column + 1) * Constants.COLUMN_WIDTH;
           const circle = createCircle(index)(column)(roundStart)(line)(x)(0);
           return new CreateCircle(circle);
         }),
@@ -70,16 +71,37 @@ export function main(
     ),
   );
 
+  const notes$ = csv$
+    .pipe(
+      mergeMap((line) =>
+        of(line).pipe(
+          delay(Math.round(line.start * 100) * 10 + 1000),
+          filter((line) => !line.user_played),
+          map(playNote(samples)), // can I play notes here? side effects??
+        ),
+      ),
+    )
+    .subscribe();
+
   const key$ = (e: Event, k: Key) =>
     fromEvent<KeyboardEvent>(document, e).pipe(
       filter(({ code }) => code === k),
       filter(({ repeat }) => !repeat),
     );
 
-  const keyOne$ = key$("keydown", "KeyH").pipe(map(() => new Placeholder()));
-  const keyTwo$ = key$("keydown", "KeyJ").pipe(map(() => new Placeholder()));
-  const keyThree$ = key$("keydown", "KeyK").pipe(map(() => new Placeholder()));
-  const keyFour$ = key$("keydown", "KeyL").pipe(map(() => new Placeholder()));
+  // type assertion???
+  const keyOne$ = key$("keydown", "KeyH").pipe(
+    map(({ code }) => new ClickCircle(code as Key)),
+  );
+  const keyTwo$ = key$("keydown", "KeyJ").pipe(
+    map(({ code }) => new ClickCircle(code as Key)),
+  );
+  const keyThree$ = key$("keydown", "KeyK").pipe(
+    map(({ code }) => new ClickCircle(code as Key)),
+  );
+  const keyFour$ = key$("keydown", "KeyL").pipe(
+    map(({ code }) => new ClickCircle(code as Key)),
+  );
 
   const action$: Observable<Action> = merge(
     gameClock$,
