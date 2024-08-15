@@ -7,9 +7,10 @@ export {
   createCircle,
   ClickCircle,
   Restart,
+  GameEnd,
 };
 
-import { Action, State, Circle, csvLine, Key, Constants } from "./types";
+import { Action, State, Circle, csvLine, ClickKey, Constants } from "./types";
 import { not } from "./util";
 
 ///////////////////
@@ -31,7 +32,6 @@ const createCircle =
   (id: number) =>
   (userPlayed: boolean) =>
   (column: number) =>
-  (start: number) =>
   (note: csvLine) =>
   (x: number) =>
   (y: number): Circle => {
@@ -42,7 +42,6 @@ const createCircle =
       userPlayed,
       column,
       duration: 0,
-      start,
       isHit: false,
       note,
     };
@@ -60,15 +59,15 @@ class Tick implements Action {
   apply(s: State): State {
     const tickCircles = s.circles.map((circle) => ({
       ...circle,
-      duration: circle.duration + 10,
+      duration: circle.duration + Constants.TICK_RATE_MS,
     }));
 
     const playableCircles = tickCircles.filter((circle) => circle.userPlayed);
     const backgroundCircles = tickCircles.filter(
-      (circle) => !circle.userPlayed && circle.duration <= 500,
+      (circle) => !circle.userPlayed && circle.duration <= Constants.TRAVEL_MS,
     );
 
-    const expired = (circle: Circle) => circle.y >= 430;
+    const expired = (circle: Circle) => circle.y >= Constants.EXPIRED_Y;
     const expiredCircles = playableCircles.filter(expired);
     const activeCircles = playableCircles.filter(not(expired));
     const moveActiveCircles = activeCircles.map(Tick.moveCircle);
@@ -87,7 +86,7 @@ class Tick implements Action {
   static moveCircle = (circle: Circle): Circle => {
     return {
       ...circle,
-      y: circle.y + 7,
+      y: circle.y + Constants.TRAVEL_Y_PER_TICK,
     };
   };
 }
@@ -104,7 +103,7 @@ class CreateCircle implements Action {
 }
 
 class ClickCircle implements Action {
-  constructor(public readonly key: Key) {}
+  constructor(public readonly key: ClickKey) {}
 
   apply(s: State): State {
     const column = Constants.COLUMN_KEYS.indexOf(this.key);
@@ -112,7 +111,8 @@ class ClickCircle implements Action {
       (circle) => circle.column === column,
     );
     const closeCircles = columnCircles.filter(
-      (circle) => Math.abs(circle.y - 350) <= 25,
+      (circle) =>
+        Math.abs(circle.y - Constants.POINT_Y) <= Constants.CLICK_RANGE_Y,
     );
 
     if (closeCircles.length === 0) {
@@ -120,8 +120,8 @@ class ClickCircle implements Action {
     }
 
     const closestCircle = closeCircles.reduce((closest, circle) => {
-      const closestDistance = Math.abs(closest.y - 350);
-      const distance = Math.abs(circle.y - 350);
+      const closestDistance = Math.abs(closest.y - Constants.POINT_Y);
+      const distance = Math.abs(circle.y - Constants.POINT_Y);
       return distance < closestDistance ? circle : closest;
     });
 
@@ -141,10 +141,19 @@ class ClickCircle implements Action {
 
 class Restart implements Action {
   apply(s: State): State {
-    console.log(s.restart);
     return {
       ...initialState,
       restart: true,
+      gameEnd: false,
+    };
+  }
+}
+
+class GameEnd implements Action {
+  apply(s: State): State {
+    return {
+      ...s,
+      gameEnd: true,
     };
   }
 }
