@@ -6,6 +6,7 @@ export {
   CreateCircle,
   createCircle,
   ClickCircle,
+  Restart,
 };
 
 import { Action, State, Circle, csvLine, Key, Constants } from "./types";
@@ -22,6 +23,7 @@ const initialState: State = {
   playableCircles: [],
   backgroundCircles: [],
   exit: [],
+  restart: false,
   gameEnd: false,
 } as const;
 
@@ -63,10 +65,10 @@ class Tick implements Action {
 
     const playableCircles = tickCircles.filter((circle) => circle.userPlayed);
     const backgroundCircles = tickCircles.filter(
-      (circle) => !circle.userPlayed && circle.duration <= 1000,
+      (circle) => !circle.userPlayed && circle.duration <= 500,
     );
 
-    const expired = (circle: Circle) => circle.y >= 375;
+    const expired = (circle: Circle) => circle.y >= 430;
     const expiredCircles = playableCircles.filter(expired);
     const activeCircles = playableCircles.filter(not(expired));
     const moveActiveCircles = activeCircles.map(Tick.moveCircle);
@@ -78,13 +80,14 @@ class Tick implements Action {
       playableCircles: activeCircles,
       backgroundCircles: backgroundCircles,
       exit: expiredCircles,
+      restart: false,
     };
   }
 
   static moveCircle = (circle: Circle): Circle => {
     return {
       ...circle,
-      y: circle.y + 3.5,
+      y: circle.y + 7,
     };
   };
 }
@@ -126,14 +129,22 @@ class ClickCircle implements Action {
       (circle) => circle !== closestCircle,
     );
 
-    console.log(this.key);
-
     return {
       ...s,
       score: s.score + 1,
       circles: filteredCircles.concat(s.backgroundCircles),
       playableCircles: filteredCircles,
       hitCircle: closestCircle,
+    };
+  }
+}
+
+class Restart implements Action {
+  apply(s: State): State {
+    console.log(s.restart);
+    return {
+      ...initialState,
+      restart: true,
     };
   }
 }
