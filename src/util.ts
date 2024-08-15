@@ -50,7 +50,7 @@ const getColumn = (pitch: number): number => {
   const columnSize = Math.ceil(
     Constants.MAX_MIDI_VELOCITY / Constants.NUMBER_OF_COLUMNS,
   );
-  return Math.floor(pitch / columnSize) + 1;
+  return Math.floor(pitch / columnSize);
 };
 
 /**
