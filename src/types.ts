@@ -36,7 +36,9 @@ type State = Readonly<{
   time: number;
   circles: ReadonlyArray<Circle>;
   exit: ReadonlyArray<Circle>;
+  hitCircle?: Circle;
   gameEnd: boolean;
+  note?: csvLine;
 }>;
 
 type Circle = Readonly<{
@@ -45,7 +47,7 @@ type Circle = Readonly<{
   y: number;
   column: number;
   start: number;
-  clickedTime?: number;
+  isHit: boolean;
   note: csvLine;
 }>;
 
