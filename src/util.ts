@@ -14,10 +14,10 @@ import { csvLine, Constants } from "./types";
 /** Utility functions */
 
 const formatLine = (line: string): csvLine => {
-  const [user_played, instrument_name, velocity, pitch, start, end] =
+  const [userPlayed, instrument_name, velocity, pitch, start, end] =
     line.split(",");
   return {
-    user_played: user_played === "True",
+    userPlayed: userPlayed === "True",
     instrument_name,
     velocity: parseInt(velocity),
     pitch: parseInt(pitch),
@@ -40,18 +40,18 @@ const playNote =
     );
   };
 
-// const getColumn = (
-//   pitch: number,
-//   minPitch: number,
-//   columnSize: number,
-// ): number => Math.floor((pitch - minPitch) / columnSize) + 1;
+const getColumn =
+  (pitch: number) =>
+  (minPitch: number) =>
+  (columnSize: number): number =>
+    Math.floor((pitch - minPitch) / columnSize);
 
-const getColumn = (pitch: number): number => {
-  const columnSize = Math.ceil(
-    Constants.MAX_MIDI_VELOCITY / Constants.NUMBER_OF_COLUMNS,
-  );
-  return Math.floor(pitch / columnSize);
-};
+// const getColumn = (pitch: number): number => {
+//   const columnSize = Math.ceil(
+//     Constants.MAX_MIDI_VELOCITY / Constants.NUMBER_OF_COLUMNS,
+//   );
+//   return Math.floor(pitch / columnSize);
+// };
 
 /**
  * Composable not: invert boolean result of given function
