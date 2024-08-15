@@ -11,6 +11,7 @@ export {
 
 import * as Tone from "tone";
 import { csvLine, Constants, Circle } from "./types";
+import { min } from "rxjs";
 
 /** Utility functions */
 
@@ -45,10 +46,9 @@ const getColumn =
   (minPitch: number) =>
   (maxPitch: number) =>
   (pitch: number): number => {
-    const columnSize = Math.ceil(
-      (maxPitch - minPitch) / Constants.NUMBER_OF_COLUMNS,
-    );
-    return Math.floor((pitch - minPitch) / columnSize);
+    const columnSize = (maxPitch - minPitch) / Constants.NUMBER_OF_COLUMNS;
+    const column = Math.floor((pitch - minPitch) / columnSize);
+    return column === Constants.NUMBER_OF_COLUMNS ? column - 1 : column;
   };
 
 const getNonOverlappingColumn =
@@ -61,7 +61,6 @@ const getNonOverlappingColumn =
   }> => {
     const column = circle.column;
     if (arr[column] === undefined) {
-      console.log("NEW COLUMN", column);
       return { circle, column };
     }
     const nextColumn = !column ? Constants.NUMBER_OF_COLUMNS : column - 1;
