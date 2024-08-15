@@ -115,6 +115,11 @@ const updateView =
         }
       }
 
+      if (state.note && state.note.start === state.time + 1000) {
+        console.log("Playing note");
+        playNote(samples)(state.note);
+      }
+
       state.circles.forEach(updateBodyView(svg));
 
       state.exit
