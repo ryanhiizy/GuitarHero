@@ -6,10 +6,11 @@ export {
   not,
   attr,
   isNotNullOrUndefined,
+  getNonOverlappingColumn,
 };
 
 import * as Tone from "tone";
-import { csvLine, Constants } from "./types";
+import { csvLine, Constants, Circle } from "./types";
 
 /** Utility functions */
 
@@ -41,10 +42,31 @@ const playNote =
   };
 
 const getColumn =
-  (pitch: number) =>
   (minPitch: number) =>
-  (columnSize: number): number =>
-    Math.floor((pitch - minPitch) / columnSize);
+  (maxPitch: number) =>
+  (pitch: number): number => {
+    const columnSize = Math.ceil(
+      (maxPitch - minPitch) / Constants.NUMBER_OF_COLUMNS,
+    );
+    return Math.floor((pitch - minPitch) / columnSize);
+  };
+
+const getNonOverlappingColumn =
+  (arr: ReadonlyArray<Circle | undefined>) =>
+  (
+    circle: Circle,
+  ): Readonly<{
+    circle: Circle;
+    column: number;
+  }> => {
+    const column = circle.column;
+    if (arr[column] === undefined) {
+      console.log("NEW COLUMN", column);
+      return { circle, column };
+    }
+    const nextColumn = !column ? Constants.NUMBER_OF_COLUMNS : column - 1;
+    return getNonOverlappingColumn(arr)(circle);
+  };
 
 // const getColumn = (pitch: number): number => {
 //   const columnSize = Math.ceil(
