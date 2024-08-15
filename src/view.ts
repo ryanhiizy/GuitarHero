@@ -109,18 +109,15 @@ const updateView =
       if (state.hitCircle) {
         const element = document.getElementById(String(state.hitCircle.id));
         if (element) {
-          console.log("Playing note");
           playNote(samples)(state.hitCircle.note);
           document.getElementById(String(state.hitCircle.id))?.remove();
         }
       }
 
-      if (state.note && state.note.start === state.time + 1000) {
-        console.log("Playing note");
-        playNote(samples)(state.note);
-      }
-
-      state.circles.forEach(updateBodyView(svg));
+      state.playableCircles.forEach(updateBodyView(svg));
+      state.backgroundCircles
+        .filter((circle) => circle.duration === 1000)
+        .forEach((circle) => playNote(samples)(circle.note));
 
       state.exit
         .map((circle) => {
