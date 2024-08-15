@@ -1,16 +1,22 @@
 export { Constants, Viewport, Note };
-export type { csvLine, Key, Event, State, Circle, Action };
+export type { csvLine, ClickKey, ExtraKey, Event, State, Circle, Action };
 
 /** Constants */
 
 const Constants = {
-  TICK_RATE_MS: 10,
-  SONG_NAME: "ComparedChild2",
+  TICK_RATE_MS: 5,
+  SONG_NAME: "mouiikai",
   MAX_MIDI_VELOCITY: 127,
   NUMBER_OF_COLUMNS: 4,
   COLUMN_WIDTH: 20,
   NOTE_COLORS: ["green", "red", "blue", "yellow"],
-  COLUMN_KEYS: ["KeyA", "KeyS", "KeyK", "KeyL", "KeyO", "KeyP", "KeyR"],
+  COLUMN_KEYS: ["KeyA", "KeyS", "KeyK", "KeyL"],
+  S_TO_MS: 1000,
+  TRAVEL_MS: 250,
+  EXPIRED_Y: 430,
+  POINT_Y: 350,
+  TRAVEL_Y_PER_TICK: 7,
+  CLICK_RANGE_Y: 30,
 } as const;
 
 const Viewport = {
@@ -25,7 +31,9 @@ const Note = {
 
 /** User input */
 
-type Key = "KeyA" | "KeyS" | "KeyK" | "KeyL" | "KeyO" | "KeyP" | "KeyR";
+type ClickKey = "KeyA" | "KeyS" | "KeyK" | "KeyL";
+
+type ExtraKey = "KeyO" | "KeyP" | "KeyR";
 
 type Event = "keydown" | "keyup" | "keypress";
 
@@ -49,7 +57,6 @@ type Circle = Readonly<{
   y: number;
   userPlayed: boolean;
   column: number;
-  start: number;
   duration: number;
   isHit: boolean;
   note: csvLine;
