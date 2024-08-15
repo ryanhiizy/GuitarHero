@@ -85,7 +85,7 @@ const updateView =
             rootSVG.namespaceURI,
             "circle",
           );
-          const color = Constants.NOTE_COLORS[circle.column - 1];
+          const color = Constants.NOTE_COLORS[circle.column];
           attr(element, {
             id: circle.id,
             r: Note.RADIUS,
@@ -100,13 +100,25 @@ const updateView =
         const element =
           document.getElementById(String(circle.id)) || createBodyView();
         attr(element, { cy: circle.y });
+
+        if (circle.y >= 350) {
+          hide(element as SVGGraphicsElement); // type assertion????
+        }
       };
+
+      if (state.hitCircle) {
+        const element = document.getElementById(String(state.hitCircle.id));
+        if (element) {
+          console.log("Playing note");
+          playNote(samples)(state.hitCircle.note);
+          document.getElementById(String(state.hitCircle.id))?.remove();
+        }
+      }
 
       state.circles.forEach(updateBodyView(svg));
 
       state.exit
         .map((circle) => {
-          playNote(samples)(circle.note);
           return document.getElementById(String(circle.id));
         })
         .filter(isNotNullOrUndefined)
@@ -117,6 +129,8 @@ const updateView =
             console.log("Already removed: " + circle.id);
           }
         });
+
+      scoreText.textContent = String(state.score);
 
       if (state.gameEnd) {
         show(gameover);
