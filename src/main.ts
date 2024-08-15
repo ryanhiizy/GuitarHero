@@ -32,11 +32,9 @@ import {
   initialState,
   Tick,
   reduceState,
-  Placeholder,
   CreateCircle,
   createCircle,
   ClickCircle,
-  UpdateNote,
 } from "./state";
 
 /**
@@ -47,42 +45,39 @@ export function main(
   csvContents: string,
   samples: { [key: string]: Tone.Sampler },
 ) {
+  const csv = parseCSV(csvContents);
+  const pitches = csv.map((line) => line.pitch);
+  const minPitch = Math.min(...pitches);
+  const maxPitch = Math.max(...pitches);
+  const columnSize = Math.ceil(
+    (maxPitch - minPitch) / Constants.NUMBER_OF_COLUMNS,
+  );
+
   const gameClock$ = interval(Constants.TICK_RATE_MS).pipe(
     map((elapsed) => {
-      const elapsedMilliseconds = (elapsed + 1) * 10;
+      const elapsedMilliseconds = elapsed * 10;
       return new Tick(elapsedMilliseconds);
     }),
   );
 
-  const csv$ = from(parseCSV(csvContents));
+  const csv$ = from(csv);
 
   const createCircles$ = csv$.pipe(
     mergeMap((line, index) =>
       of(line).pipe(
         delay(Math.round(line.start * 100) * 10),
-        filter((line) => line.user_played),
         map((line) => {
+          const userPlayed = line.userPlayed;
           const roundStart = Math.round(line.start * 100) * 10;
-          const column = getColumn(line.pitch);
+          const column = getColumn(line.pitch)(minPitch)(columnSize);
           const x = (column + 1) * Constants.COLUMN_WIDTH;
-          const circle = createCircle(index)(column)(roundStart)(line)(x)(0);
+          const circle =
+            createCircle(index)(userPlayed)(column)(roundStart)(line)(x)(0);
           return new CreateCircle(circle);
         }),
       ),
     ),
   );
-
-  const notes$ = csv$
-    .pipe(
-      mergeMap((line) =>
-        of(line).pipe(
-          delay(Math.round(line.start * 100) * 10 + 1000),
-          filter((line) => !line.user_played),
-          map((line) => new UpdateNote(line)),
-        ),
-      ),
-    )
-    .subscribe();
 
   const key$ = (e: Event, k: Key) =>
     fromEvent<KeyboardEvent>(document, e).pipe(
@@ -91,10 +86,10 @@ export function main(
     );
 
   // type assertion???
-  const keyOne$ = key$("keydown", "KeyH").pipe(
+  const keyOne$ = key$("keydown", "KeyA").pipe(
     map(({ code }) => new ClickCircle(code as Key)),
   );
-  const keyTwo$ = key$("keydown", "KeyJ").pipe(
+  const keyTwo$ = key$("keydown", "KeyS").pipe(
     map(({ code }) => new ClickCircle(code as Key)),
   );
   const keyThree$ = key$("keydown", "KeyK").pipe(
