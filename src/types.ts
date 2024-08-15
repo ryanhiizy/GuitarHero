@@ -5,12 +5,12 @@ export type { csvLine, Key, Event, State, Circle, Action };
 
 const Constants = {
   TICK_RATE_MS: 10,
-  SONG_NAME: "SleepingBeauty",
+  SONG_NAME: "ComparedChild2",
   MAX_MIDI_VELOCITY: 127,
   NUMBER_OF_COLUMNS: 4,
   COLUMN_WIDTH: 20,
   NOTE_COLORS: ["green", "red", "blue", "yellow"],
-  COLUMN_KEYS: ["KeyA", "KeyS", "KeyK", "KeyL"],
+  COLUMN_KEYS: ["KeyA", "KeyS", "KeyK", "KeyL", "KeyO", "KeyP", "KeyR"],
 } as const;
 
 const Viewport = {
@@ -25,7 +25,7 @@ const Note = {
 
 /** User input */
 
-type Key = "KeyA" | "KeyS" | "KeyK" | "KeyL";
+type Key = "KeyA" | "KeyS" | "KeyK" | "KeyL" | "KeyO" | "KeyP" | "KeyR";
 
 type Event = "keydown" | "keyup" | "keypress";
 
@@ -39,6 +39,7 @@ type State = Readonly<{
   backgroundCircles: ReadonlyArray<Circle>;
   exit: ReadonlyArray<Circle>;
   hitCircle?: Circle;
+  restart: boolean;
   gameEnd: boolean;
 }>;
 
