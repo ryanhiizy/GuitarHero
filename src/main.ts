@@ -22,12 +22,25 @@ import {
   of,
   Subscription,
 } from "rxjs";
-import { map, filter, scan, mergeMap, delay } from "rxjs/operators";
+import {
+  map,
+  filter,
+  scan,
+  mergeMap,
+  delay,
+  startWith,
+  shareReplay,
+  concatMap,
+  take,
+  tap,
+  switchMap,
+  withLatestFrom,
+} from "rxjs/operators";
 import * as Tone from "tone";
 import { SampleLibrary } from "./tonejs-instruments";
 import { Constants, Key, Event, State, Action } from "./types";
 import { updateView } from "./view";
-import { parseCSV, getColumn, playNote } from "./util";
+import { parseCSV, getColumn } from "./util";
 import {
   initialState,
   Tick,
@@ -35,6 +48,7 @@ import {
   CreateCircle,
   createCircle,
   ClickCircle,
+  Restart,
 } from "./state";
 
 /**
@@ -45,13 +59,12 @@ export function main(
   csvContents: string,
   samples: { [key: string]: Tone.Sampler },
 ) {
+  console.log("RUNNING");
+
   const csv = parseCSV(csvContents);
   const pitches = csv.map((line) => line.pitch);
   const minPitch = Math.min(...pitches);
   const maxPitch = Math.max(...pitches);
-  const columnSize = Math.ceil(
-    (maxPitch - minPitch) / Constants.NUMBER_OF_COLUMNS,
-  );
 
   const gameClock$ = interval(Constants.TICK_RATE_MS).pipe(
     map((elapsed) => {
@@ -69,7 +82,7 @@ export function main(
         map((line) => {
           const userPlayed = line.userPlayed;
           const roundStart = Math.round(line.start * 100) * 10;
-          const column = getColumn(line.pitch)(minPitch)(columnSize);
+          const column = getColumn(minPitch)(maxPitch)(line.pitch);
           const x = (column + 1) * Constants.COLUMN_WIDTH;
           const circle =
             createCircle(index)(userPlayed)(column)(roundStart)(line)(x)(0);
@@ -99,22 +112,40 @@ export function main(
     map(({ code }) => new ClickCircle(code as Key)),
   );
 
-  const action$: Observable<Action> = merge(
+  const resume$ = key$("keydown", "KeyO").pipe(map(() => true));
+  const pause$ = key$("keydown", "KeyP").pipe(map(() => false));
+  const pauseResume$ = merge(pause$, resume$).pipe(startWith(true));
+
+  const restart$ = key$("keydown", "KeyR").pipe(map(() => new Restart()));
+
+  const nonRestartActions$: Observable<Action> = merge(
     gameClock$,
     createCircles$,
     keyOne$,
     keyTwo$,
     keyThree$,
     keyFour$,
+  ).pipe(
+    withLatestFrom(pauseResume$),
+    filter(([_, isResumed]) => isResumed),
+    map(([action, _]) => action),
   );
+
+  const action$: Observable<Action> = merge(nonRestartActions$, restart$);
 
   const state$: Observable<State> = action$.pipe(
     scan(reduceState, initialState),
   );
 
   const updateViewWithArgs = updateView(csvContents)(samples);
+
   const subscription: Subscription = state$.subscribe(
-    updateViewWithArgs(() => subscription.unsubscribe()),
+    updateViewWithArgs((restart: boolean) => {
+      if (restart) {
+        main(csvContents, samples);
+      }
+      subscription.unsubscribe();
+    }),
   );
 }
 
