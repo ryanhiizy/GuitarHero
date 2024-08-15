@@ -10,7 +10,7 @@ const Constants = {
   NUMBER_OF_COLUMNS: 4,
   COLUMN_WIDTH: 20,
   NOTE_COLORS: ["green", "red", "blue", "yellow"],
-  COLUMN_KEYS: ["KeyH", "KeyJ", "KeyK", "KeyL"],
+  COLUMN_KEYS: ["KeyA", "KeyS", "KeyK", "KeyL"],
 } as const;
 
 const Viewport = {
@@ -25,7 +25,7 @@ const Note = {
 
 /** User input */
 
-type Key = "KeyH" | "KeyJ" | "KeyK" | "KeyL";
+type Key = "KeyA" | "KeyS" | "KeyK" | "KeyL";
 
 type Event = "keydown" | "keyup" | "keypress";
 
@@ -35,24 +35,27 @@ type State = Readonly<{
   score: number;
   time: number;
   circles: ReadonlyArray<Circle>;
+  playableCircles: ReadonlyArray<Circle>;
+  backgroundCircles: ReadonlyArray<Circle>;
   exit: ReadonlyArray<Circle>;
   hitCircle?: Circle;
   gameEnd: boolean;
-  note?: csvLine;
 }>;
 
 type Circle = Readonly<{
   id: number;
   x: number;
   y: number;
+  userPlayed: boolean;
   column: number;
   start: number;
+  duration: number;
   isHit: boolean;
   note: csvLine;
 }>;
 
 type csvLine = Readonly<{
-  user_played: boolean;
+  userPlayed: boolean;
   instrument_name: string;
   velocity: number;
   pitch: number;
