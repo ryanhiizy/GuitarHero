@@ -6,6 +6,7 @@ export {
   CreateCircle,
   createCircle,
   ClickCircle,
+  UpdateNote,
 };
 
 import { Action, State, Circle, csvLine, Key, Constants } from "./types";
@@ -117,6 +118,17 @@ class ClickCircle implements Action {
       score: s.score + 1,
       circles: s.circles.filter((circle) => circle !== closestCircle.circle),
       hitCircle: closestCircle.circle,
+    };
+  }
+}
+
+class UpdateNote implements Action {
+  constructor(public readonly note: csvLine) {}
+
+  apply(s: State): State {
+    return {
+      ...s,
+      note: this.note,
     };
   }
 }
