@@ -1,7 +1,7 @@
 export { createSvgElement, hide, show, updateView };
 
 import * as Tone from "tone";
-import { Circle, Constants, Note, State, Viewport } from "./types";
+import { Circle, Constants, ClickKey, Note, State, Viewport } from "./types";
 import {
   attr,
   getColumn,
@@ -11,6 +11,9 @@ import {
   parseCSV,
   playNote,
 } from "./util";
+import { filter, fromEvent, map, Observable } from "rxjs";
+import { initialState, Restart } from "./state";
+import { main } from "./main";
 
 /** Rendering (side effects) */
 
@@ -67,6 +70,10 @@ const updateView =
       ) as SVGGraphicsElement & HTMLElement;
       const container = document.querySelector("#main") as HTMLElement;
 
+      if (!state.gameEnd) {
+        hide(gameover);
+      }
+
       svg.setAttribute("height", `${Viewport.CANVAS_HEIGHT}`);
       svg.setAttribute("width", `${Viewport.CANVAS_WIDTH}`);
 
@@ -81,7 +88,7 @@ const updateView =
 
       const updateBodyView = (rootSVG: HTMLElement) => (circle: Circle) => {
         function createBodyView() {
-          const previousCircles = Array.from({ length: 4 });
+          // const previousCircles = Array.from({ length: 4 });
           const element = document.createElementNS(
             rootSVG.namespaceURI,
             "circle",
@@ -111,7 +118,6 @@ const updateView =
       if (state.hitCircle) {
         const element = document.getElementById(String(state.hitCircle.id));
         if (element) {
-          console.log("HIT");
           document.getElementById(String(state.hitCircle.id))?.remove();
           playNote(samples)(state.hitCircle.note);
         }
@@ -136,7 +142,7 @@ const updateView =
       state.playableCircles.forEach(updateBodyView(svg));
 
       state.backgroundCircles
-        .filter((circle) => circle.duration === 500)
+        .filter((circle) => circle.duration === Constants.TRAVEL_MS)
         .forEach((circle) => playNote(samples)(circle.note));
 
       state.exit
@@ -154,15 +160,19 @@ const updateView =
 
       scoreText.textContent = String(state.score);
 
-      if (state.restart) {
+      const clearCircles = () => {
         const circles = document.querySelectorAll("[class=shadow]");
         circles.forEach((circle) => circle.remove());
-        // main(csvContents, samples); // even though this doesn't run in the beginning, this line causes there to be two instances of the game running at the same time
+      };
+
+      if (state.restart) {
+        clearCircles();
         onFinish(true);
       }
 
       if (state.gameEnd) {
         show(gameover);
+        clearCircles();
         onFinish(false);
       }
     };
