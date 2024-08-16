@@ -39,21 +39,33 @@ import {
   endWith,
   takeWhile,
   finalize,
+  delayWhen,
+  concatWith,
 } from "rxjs/operators";
 import * as Tone from "tone";
 import { SampleLibrary } from "./tonejs-instruments";
-import { Constants, ClickKey, ExtraKey, Event, State, Action } from "./types";
+import {
+  Constants,
+  ClickKey,
+  ExtraKey,
+  Event,
+  State,
+  Action,
+  csvLine,
+} from "./types";
 import { updateView } from "./view";
 import { parseCSV, getColumn } from "./util";
 import {
-  initialState,
+  IState,
   Tick,
   reduceState,
-  CreateCircle,
-  createCircle,
   ClickCircle,
   Restart,
   GameEnd,
+  Resume,
+  Pause,
+  createCircle,
+  CreateCircle,
 } from "./state";
 
 /**
@@ -63,6 +75,7 @@ import {
 export function main(
   csvContents: string,
   samples: { [key: string]: Tone.Sampler },
+  state: State = IState,
 ) {
   const csv = parseCSV(csvContents);
   const pitches = csv
@@ -72,10 +85,7 @@ export function main(
   const maxPitch = Math.max(...pitches);
 
   const gameClock$ = interval(Constants.TICK_RATE_MS).pipe(
-    map((elapsed) => {
-      const elapsedMilliseconds = elapsed * Constants.TICK_RATE_MS;
-      return new Tick(elapsedMilliseconds);
-    }),
+    map(() => new Tick()),
   );
 
   const csv$ = from(csv);
@@ -93,8 +103,90 @@ export function main(
         }),
       ),
     ),
-    endWith(new GameEnd()),
+    concatWith(of(new GameEnd()).pipe(delay(2000))),
   );
+
+  // type acc = {
+  //   lines: ReadonlyArray<csvLine>;
+  //   currentLine: csvLine | null;
+  // };
+
+  // const startTime = performance.now();
+  // const gameClock$ = interval(Constants.TICK_RATE_MS).pipe(
+  //   scan(
+  //     (acc) => {
+  //       const currentTime = performance.now();
+  //       const elapsedTime = currentTime - startTime;
+  //       const [currentLine, ...remainingLines] = acc.lines;
+
+  //       if (
+  //         currentLine &&
+  //         elapsedTime >= currentLine.start * Constants.S_TO_MS
+  //       ) {
+  //         return { ...acc, lines: remainingLines, currentLine };
+  //       }
+
+  //       return { ...acc, currentLine: null };
+  //     },
+  //     { lines: [...csv], currentLine: null } as acc,
+  //   ),
+  //   map((acc) => {
+  //     if (acc.currentLine) {
+  //       return new Tick(acc.currentLine, minPitch, maxPitch);
+  //     } else {
+  //       return new Tick(null, minPitch, maxPitch);
+  //     }
+  //   }),
+  //   concatWith(of(new GameEnd()).pipe(delay(2000))),
+  // );
+
+  // const gameClock$ = interval(Constants.TICK_RATE_MS).pipe(
+  //   scan(
+  //     (acc, tickCount) => {
+  //       const currentTime = tickCount * Constants.TICK_RATE_MS;
+  //       const [currentLine, ...remainingLines] = acc.lines;
+
+  //       if (
+  //         currentLine &&
+  //         currentTime + 1000 >= currentLine.start * Constants.S_TO_MS
+  //       ) {
+  //         return { ...acc, lines: remainingLines, currentLine };
+  //       }
+
+  //       return { ...acc, currentLine: null };
+  //     },
+  //     { lines: [...csv], currentLine: null } as acc,
+  //   ),
+  //   map((acc) => {
+  //     if (acc.currentLine) {
+  //       return new Tick(acc.currentLine, minPitch, maxPitch);
+  //     } else {
+  //       return new Tick(null, minPitch, maxPitch);
+  //     }
+  //   }),
+  //   concatWith(of(new GameEnd()).pipe(delay(2000))),
+  // );
+
+  // const csv$ = from(csv);
+  // delay(300),
+  // concatWith(of(new GameEnd()).pipe(delay(2000))),
+
+  // const createCircles$ = csv$.pipe(
+  //   mergeMap((line, index) =>
+  //     of(line).pipe(
+  //       delay(line.start * Constants.S_TO_MS),
+  //       map((line) => {
+  //         const userPlayed = line.userPlayed;
+  //         const column = getColumn(minPitch)(maxPitch)(line.pitch);
+  //         const x = (column + 1) * Constants.COLUMN_WIDTH;
+  //         const circle = createCircle(index)(userPlayed)(column)(line)(x)(0);
+  //         return new CreateCircle(circle);
+  //       }),
+  //     ),
+  //   ),
+  //   delay(300),
+  //   concatWith(of(new GameEnd()).pipe(delay(2000))),
+  // );
 
   const key$ = (e: Event, k: ClickKey | ExtraKey) =>
     fromEvent<KeyboardEvent>(document, e).pipe(
@@ -120,6 +212,9 @@ export function main(
   const pause$ = key$("keydown", "KeyP").pipe(map(() => false));
   const pauseResume$ = merge(pause$, resume$).pipe(startWith(true));
 
+  // const resume$ = keyResume$.pipe(map(() => new Resume()));
+  // const pause$ = keyPause$.pipe(map(() => new Pause()));
+
   const keyR$ = key$("keydown", "KeyR");
   const restart$ = key$("keydown", "KeyR").pipe(
     map(() => {
@@ -134,6 +229,8 @@ export function main(
     keyTwo$,
     keyThree$,
     keyFour$,
+    // resume$,
+    // pause$,
   ).pipe(
     withLatestFrom(pauseResume$),
     filter(([_, isResumed]) => isResumed),
@@ -142,22 +239,20 @@ export function main(
 
   const action$: Observable<Action> = merge(nonRestartActions$, restart$);
 
-  const state$: Observable<State> = action$.pipe(
-    scan(reduceState, initialState),
-  );
+  const state$: Observable<State> = action$.pipe(scan(reduceState, state));
 
   const updateViewWithArgs = updateView(csvContents)(samples);
 
   const subscription: Subscription = state$.subscribe(
-    updateViewWithArgs((restart: boolean) => {
+    updateViewWithArgs((restart: boolean, state: State) => {
       subscription.unsubscribe();
       if (restart) {
-        main(csvContents, samples);
+        main(csvContents, samples, state);
       } else {
-        const keyRSubscription = keyR$
+        const keyRSubscription: Subscription = keyR$
           .pipe(
             concatMap((event) =>
-              of(event).pipe(tap(() => main(csvContents, samples))),
+              of(event).pipe(tap(() => main(csvContents, samples, state))),
             ),
             tap(() => keyRSubscription.unsubscribe()),
           )
