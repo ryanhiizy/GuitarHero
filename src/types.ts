@@ -5,7 +5,7 @@ export type { csvLine, ClickKey, ExtraKey, Event, State, Circle, Action };
 
 const Constants = {
   TICK_RATE_MS: 5,
-  SONG_NAME: "mouiikai",
+  SONG_NAME: "bus",
   MAX_MIDI_VELOCITY: 127,
   NUMBER_OF_COLUMNS: 4,
   COLUMN_WIDTH: 20,
@@ -17,6 +17,9 @@ const Constants = {
   POINT_Y: 350,
   TRAVEL_Y_PER_TICK: 7,
   CLICK_RANGE_Y: 30,
+  SCORE_PER_HIT: 10,
+  MULTIPLIER_INCREMENT: 0.2,
+  COMBO_FOR_MULTIPLIER: 10,
 } as const;
 
 const Viewport = {
@@ -41,12 +44,17 @@ type Event = "keydown" | "keyup" | "keypress";
 
 type State = Readonly<{
   score: number;
+  multiplier: number;
+  highscore: number;
+  combo: number;
+  comboCount: number;
   time: number;
   circles: ReadonlyArray<Circle>;
   playableCircles: ReadonlyArray<Circle>;
   backgroundCircles: ReadonlyArray<Circle>;
   exit: ReadonlyArray<Circle>;
   hitCircle?: Circle;
+  paused: boolean;
   restart: boolean;
   gameEnd: boolean;
 }>;
