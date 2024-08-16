@@ -1,29 +1,37 @@
 export {
-  initialState,
+  IState,
   Tick,
   reduceState,
   Placeholder,
-  CreateCircle,
   createCircle,
+  CreateCircle,
   ClickCircle,
   Restart,
   GameEnd,
+  Pause,
+  Resume,
 };
 
+import { count } from "rxjs";
 import { Action, State, Circle, csvLine, ClickKey, Constants } from "./types";
-import { not } from "./util";
+import { getColumn, not } from "./util";
 
 ///////////////////
 // INITIAL SETUP //
 ///////////////////
 
-const initialState: State = {
+const IState: State = {
   score: 0,
+  multiplier: 1,
+  highscore: 0,
+  combo: 0,
+  comboCount: 0,
   time: 0,
   circles: [],
   playableCircles: [],
   backgroundCircles: [],
   exit: [],
+  paused: false,
   restart: false,
   gameEnd: false,
 } as const;
@@ -54,9 +62,8 @@ class Placeholder implements Action {
 }
 
 class Tick implements Action {
-  constructor(public readonly elapsed: number) {}
-
   apply(s: State): State {
+    // i think i can just tick the bg
     const tickCircles = s.circles.map((circle) => ({
       ...circle,
       duration: circle.duration + Constants.TICK_RATE_MS,
@@ -72,9 +79,14 @@ class Tick implements Action {
     const activeCircles = playableCircles.filter(not(expired));
     const moveActiveCircles = activeCircles.map(Tick.moveCircle);
 
+    const combo = expiredCircles.length === 0 ? s.combo : 0;
+    const multiplier = combo === 0 ? 1 : s.multiplier;
+
     return {
       ...s,
-      time: this.elapsed,
+      combo: combo,
+      multiplier: multiplier,
+      time: s.time + Constants.TICK_RATE_MS,
       circles: moveActiveCircles.concat(backgroundCircles),
       playableCircles: activeCircles,
       backgroundCircles: backgroundCircles,
@@ -129,12 +141,41 @@ class ClickCircle implements Action {
       (circle) => circle !== closestCircle,
     );
 
+    // combo/multiplier calculation
+    const comboForMultiplier = s.combo + 1 - s.comboCount;
+
+    const multiplier =
+      comboForMultiplier === Constants.COMBO_FOR_MULTIPLIER
+        ? s.multiplier + Constants.MULTIPLIER_INCREMENT
+        : s.multiplier;
+
     return {
       ...s,
-      score: s.score + 1,
+      multiplier: parseFloat(multiplier.toFixed(1)),
+      score: s.score + Constants.SCORE_PER_HIT * s.multiplier,
+      combo: s.combo + 1,
+      comboCount: Math.floor(s.combo / 10) * 10,
       circles: filteredCircles.concat(s.backgroundCircles),
       playableCircles: filteredCircles,
-      hitCircle: closestCircle,
+      hitCircle: { ...closestCircle, isHit: true },
+    };
+  }
+}
+
+class Pause implements Action {
+  apply(s: State): State {
+    return {
+      ...s,
+      paused: true,
+    };
+  }
+}
+
+class Resume implements Action {
+  apply(s: State): State {
+    return {
+      ...s,
+      paused: false,
     };
   }
 }
@@ -142,7 +183,7 @@ class ClickCircle implements Action {
 class Restart implements Action {
   apply(s: State): State {
     return {
-      ...initialState,
+      ...s,
       restart: true,
       gameEnd: false,
     };
