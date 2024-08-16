@@ -168,41 +168,56 @@
                     ></rect>
                     <text x="36" y="150">Game Over</text>
                 </g>
+
+                <g id="paused" visibility="hidden">
+                    <rect
+                        x="26"
+                        y="120"
+                        fill="white"
+                        height="48"
+                        width="149"
+                    ></rect>
+                    <text x="36" y="150">Paused</text>
+                </g>
             </svg>
             <div id="sideBar" class="flex col">
                 <div id="info" class="flex col">
                     <div class="text">
-                        <span class="left">Multiplier: </span>
-                        <span class="right" id="multiplierText">...</span>
+                        <span class="left">Highscore: </span>
+                        <span class="right" id="highScoreText">...</span>
                     </div>
                     <div class="text">
                         <span class="left">Score: </span>
                         <span class="right" id="scoreText">...</span>
                     </div>
                     <div class="text">
-                        <span class="left">Highscore: </span>
-                        <span class="right" id="highScoreText">...</span>
+                        <span class="left">Combo: </span>
+                        <span class="right" id="comboText">...</span>
                     </div>
                     <div class="text">
-                        <span class="left">Column 1: </span>
+                        <span class="left">Multiplier: </span>
+                        <span class="right" id="multiplierText">...</span>
+                    </div>
+                    <div class="text">
+                        <span class="left">Green: </span>
                         <span class="right">
                             <div id="KeyA" class="key">A</div>
                         </span>
                     </div>
                     <div class="text">
-                        <span class="left">Column 2: </span>
+                        <span class="left">Red: </span>
                         <span class="right">
                             <div id="KeyS" class="key">S</div>
                         </span>
                     </div>
                     <div class="text">
-                        <span class="left">Column 3: </span>
+                        <span class="left">Blue: </span>
                         <span class="right">
                             <div id="KeyK" class="key">K</div>
                         </span>
                     </div>
                     <div class="text">
-                        <span class="left">Column 4: </span>
+                        <span class="left">Yellow: </span>
                         <span class="right">
                             <div id="KeyL" class="key">L</div>
                         </span>
