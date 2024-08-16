@@ -12,7 +12,7 @@ import {
   playNote,
 } from "./util";
 import { filter, fromEvent, map, Observable } from "rxjs";
-import { initialState, Restart } from "./state";
+import { IState, Restart } from "./state";
 import { main } from "./main";
 
 /** Rendering (side effects) */
@@ -57,8 +57,16 @@ const createSvgElement = (
 const updateView =
   (csvContents: string) =>
   (samples: { [key: string]: Tone.Sampler }) =>
-  (onFinish: (restart: boolean) => void) => {
+  (onFinish: (restart: boolean, state: State) => void) => {
     return (state: State): void => {
+      const paused = document.querySelector("#paused") as SVGGraphicsElement &
+        HTMLElement;
+      if (state.paused) {
+        show(paused);
+      } else {
+        hide(paused);
+      }
+
       // Canvas elements
       const svg = document.querySelector("#svgCanvas") as SVGGraphicsElement &
         HTMLElement;
@@ -69,10 +77,6 @@ const updateView =
         "#gameOver",
       ) as SVGGraphicsElement & HTMLElement;
       const container = document.querySelector("#main") as HTMLElement;
-
-      if (!state.gameEnd) {
-        hide(gameover);
-      }
 
       svg.setAttribute("height", `${Viewport.CANVAS_HEIGHT}`);
       svg.setAttribute("width", `${Viewport.CANVAS_WIDTH}`);
@@ -85,6 +89,7 @@ const updateView =
       const highScoreText = document.querySelector(
         "#highScoreText",
       ) as HTMLElement;
+      const comboText = document.querySelector("#comboText") as HTMLElement;
 
       const updateBodyView = (rootSVG: HTMLElement) => (circle: Circle) => {
         function createBodyView() {
@@ -158,22 +163,30 @@ const updateView =
           }
         });
 
-      scoreText.textContent = String(state.score);
+      highScoreText.textContent = String(state.highscore);
+      scoreText.textContent = String(Math.round(state.score));
+      comboText.textContent = String(state.combo);
+      multiplier.textContent = `${state.multiplier}x`;
 
       const clearCircles = () => {
         const circles = document.querySelectorAll("[class=shadow]");
         circles.forEach((circle) => circle.remove());
       };
 
+      hide(gameover);
+
       if (state.restart) {
         clearCircles();
-        onFinish(true);
+        onFinish(true, { ...IState, highscore: state.highscore });
       }
 
       if (state.gameEnd) {
         show(gameover);
         clearCircles();
-        onFinish(false);
+        onFinish(false, {
+          ...IState,
+          highscore: Math.max(state.score, state.highscore),
+        });
       }
     };
   };
