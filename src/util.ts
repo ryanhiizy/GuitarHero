@@ -34,22 +34,24 @@ const parseCSV = (csvContents: string): ReadonlyArray<csvLine> => {
 
 const playNote =
   (samples: { [key: string]: Tone.Sampler }) => (line: csvLine) => {
+    const normalizedVelocity = Math.min(Math.max(line.velocity, 0), 1);
     samples[line.instrument_name].triggerAttackRelease(
       Tone.Frequency(line.pitch, "midi").toNote(),
       line.end - line.start,
       undefined,
-      line.velocity / Constants.MAX_MIDI_VELOCITY,
+      normalizedVelocity / Constants.MAX_MIDI_VELOCITY, // Use the normalized velocity directly
     );
   };
 
-const getColumn =
-  (minPitch: number) =>
-  (maxPitch: number) =>
-  (pitch: number): number => {
-    const columnSize = (maxPitch - minPitch) / Constants.NUMBER_OF_COLUMNS;
-    const column = Math.floor((pitch - minPitch) / columnSize);
-    return column === Constants.NUMBER_OF_COLUMNS ? column - 1 : column;
-  };
+const getColumn = (
+  minPitch: number,
+  maxPitch: number,
+  pitch: number,
+): number => {
+  const columnSize = (maxPitch - minPitch) / Constants.NUMBER_OF_COLUMNS;
+  const column = Math.floor((pitch - minPitch) / columnSize);
+  return column === Constants.NUMBER_OF_COLUMNS ? column - 1 : column;
+};
 
 const getNonOverlappingColumn =
   (arr: ReadonlyArray<Circle | undefined>) =>
