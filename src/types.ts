@@ -5,18 +5,18 @@ export type { csvLine, ClickKey, ExtraKey, Event, State, Circle, Action };
 
 const Constants = {
   TICK_RATE_MS: 5,
-  SONG_NAME: "bus",
+  SONG_NAME: "past",
   MAX_MIDI_VELOCITY: 127,
   NUMBER_OF_COLUMNS: 4,
   COLUMN_WIDTH: 20,
   NOTE_COLORS: ["green", "red", "blue", "yellow"],
   COLUMN_KEYS: ["KeyA", "KeyS", "KeyK", "KeyL"],
   S_TO_MS: 1000,
-  TRAVEL_MS: 250,
+  TRAVEL_MS: 500,
   EXPIRED_Y: 430,
   POINT_Y: 350,
-  TRAVEL_Y_PER_TICK: 7,
-  CLICK_RANGE_Y: 30,
+  TRAVEL_Y_PER_TICK: 3.5,
+  CLICK_RANGE_Y: 40,
   SCORE_PER_HIT: 10,
   MULTIPLIER_INCREMENT: 0.2,
   COMBO_FOR_MULTIPLIER: 10,
@@ -53,7 +53,7 @@ type State = Readonly<{
   playableCircles: ReadonlyArray<Circle>;
   backgroundCircles: ReadonlyArray<Circle>;
   exit: ReadonlyArray<Circle>;
-  hitCircle?: Circle;
+  hitCircles: ReadonlyArray<Circle>;
   paused: boolean;
   restart: boolean;
   gameEnd: boolean;
