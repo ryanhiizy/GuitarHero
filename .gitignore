@@ -28,3 +28,5 @@ assets/dist
 assets/Linux
 *Zone.Identifier
 *.mp3
+*.ogg
+*.wav
