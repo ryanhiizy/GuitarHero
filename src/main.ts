@@ -13,7 +13,17 @@
  */
 
 import "./style.css";
+import * as Tone from "tone";
+import { SampleLibrary } from "./tonejs-instruments";
+import { updateView } from "./view";
 import {
+  parseCSV,
+  getColumn,
+  getGroupedNotes,
+  getRelativeGroupedNotes,
+} from "./util";
+import {
+  BehaviorSubject,
   from,
   fromEvent,
   interval,
@@ -21,29 +31,18 @@ import {
   Observable,
   of,
   Subscription,
-  timer,
 } from "rxjs";
 import {
   map,
   filter,
   scan,
   mergeMap,
+  mergeWith,
   delay,
-  startWith,
-  shareReplay,
   concatMap,
-  take,
-  tap,
-  switchMap,
-  withLatestFrom,
-  endWith,
-  takeWhile,
-  finalize,
   delayWhen,
   concatWith,
 } from "rxjs/operators";
-import * as Tone from "tone";
-import { SampleLibrary } from "./tonejs-instruments";
 import {
   Constants,
   ClickKey,
@@ -51,10 +50,8 @@ import {
   Event,
   State,
   Action,
-  csvLine,
+  Note,
 } from "./types";
-import { updateView } from "./view";
-import { parseCSV, getColumn } from "./util";
 import {
   IState,
   Tick,
@@ -62,7 +59,6 @@ import {
   ClickCircle,
   Restart,
   GameEnd,
-  Resume,
   Pause,
   createCircle,
   CreateCircle,
@@ -84,109 +80,9 @@ export function main(
   const minPitch = Math.min(...pitches);
   const maxPitch = Math.max(...pitches);
 
-  const gameClock$ = interval(Constants.TICK_RATE_MS).pipe(
-    map(() => new Tick()),
-  );
+  const groupedNotes = getGroupedNotes(csv);
 
-  const csv$ = from(csv);
-
-  const createCircles$ = csv$.pipe(
-    mergeMap((line, index) =>
-      of(line).pipe(
-        delay(line.start * Constants.S_TO_MS),
-        map((line) => {
-          const userPlayed = line.userPlayed;
-          const column = getColumn(minPitch)(maxPitch)(line.pitch);
-          const x = (column + 1) * Constants.COLUMN_WIDTH;
-          const circle = createCircle(index)(userPlayed)(column)(line)(x)(0);
-          return new CreateCircle(circle);
-        }),
-      ),
-    ),
-    concatWith(of(new GameEnd()).pipe(delay(2000))),
-  );
-
-  // type acc = {
-  //   lines: ReadonlyArray<csvLine>;
-  //   currentLine: csvLine | null;
-  // };
-
-  // const startTime = performance.now();
-  // const gameClock$ = interval(Constants.TICK_RATE_MS).pipe(
-  //   scan(
-  //     (acc) => {
-  //       const currentTime = performance.now();
-  //       const elapsedTime = currentTime - startTime;
-  //       const [currentLine, ...remainingLines] = acc.lines;
-
-  //       if (
-  //         currentLine &&
-  //         elapsedTime >= currentLine.start * Constants.S_TO_MS
-  //       ) {
-  //         return { ...acc, lines: remainingLines, currentLine };
-  //       }
-
-  //       return { ...acc, currentLine: null };
-  //     },
-  //     { lines: [...csv], currentLine: null } as acc,
-  //   ),
-  //   map((acc) => {
-  //     if (acc.currentLine) {
-  //       return new Tick(acc.currentLine, minPitch, maxPitch);
-  //     } else {
-  //       return new Tick(null, minPitch, maxPitch);
-  //     }
-  //   }),
-  //   concatWith(of(new GameEnd()).pipe(delay(2000))),
-  // );
-
-  // const gameClock$ = interval(Constants.TICK_RATE_MS).pipe(
-  //   scan(
-  //     (acc, tickCount) => {
-  //       const currentTime = tickCount * Constants.TICK_RATE_MS;
-  //       const [currentLine, ...remainingLines] = acc.lines;
-
-  //       if (
-  //         currentLine &&
-  //         currentTime + 1000 >= currentLine.start * Constants.S_TO_MS
-  //       ) {
-  //         return { ...acc, lines: remainingLines, currentLine };
-  //       }
-
-  //       return { ...acc, currentLine: null };
-  //     },
-  //     { lines: [...csv], currentLine: null } as acc,
-  //   ),
-  //   map((acc) => {
-  //     if (acc.currentLine) {
-  //       return new Tick(acc.currentLine, minPitch, maxPitch);
-  //     } else {
-  //       return new Tick(null, minPitch, maxPitch);
-  //     }
-  //   }),
-  //   concatWith(of(new GameEnd()).pipe(delay(2000))),
-  // );
-
-  // const csv$ = from(csv);
-  // delay(300),
-  // concatWith(of(new GameEnd()).pipe(delay(2000))),
-
-  // const createCircles$ = csv$.pipe(
-  //   mergeMap((line, index) =>
-  //     of(line).pipe(
-  //       delay(line.start * Constants.S_TO_MS),
-  //       map((line) => {
-  //         const userPlayed = line.userPlayed;
-  //         const column = getColumn(minPitch)(maxPitch)(line.pitch);
-  //         const x = (column + 1) * Constants.COLUMN_WIDTH;
-  //         const circle = createCircle(index)(userPlayed)(column)(line)(x)(0);
-  //         return new CreateCircle(circle);
-  //       }),
-  //     ),
-  //   ),
-  //   delay(300),
-  //   concatWith(of(new GameEnd()).pipe(delay(2000))),
-  // );
+  const relativeGroupedNotes = getRelativeGroupedNotes(groupedNotes);
 
   const key$ = (e: Event, k: ClickKey | ExtraKey) =>
     fromEvent<KeyboardEvent>(document, e).pipe(
@@ -194,7 +90,6 @@ export function main(
       filter(({ repeat }) => !repeat),
     );
 
-  // type assertion???
   const keyOne$ = key$("keydown", "KeyA").pipe(
     map(({ code }) => new ClickCircle(code as ClickKey)),
   );
@@ -208,53 +103,86 @@ export function main(
     map(({ code }) => new ClickCircle(code as ClickKey)),
   );
 
-  const resume$ = key$("keydown", "KeyO").pipe(map(() => true));
-  const pause$ = key$("keydown", "KeyP").pipe(map(() => false));
-  const pauseResume$ = merge(pause$, resume$).pipe(startWith(true));
-
-  // const resume$ = keyResume$.pipe(map(() => new Resume()));
-  // const pause$ = keyPause$.pipe(map(() => new Pause()));
-
   const keyR$ = key$("keydown", "KeyR");
-  const restart$ = key$("keydown", "KeyR").pipe(
+  const restart$ = keyR$.pipe(
     map(() => {
       return new Restart();
     }),
   );
 
-  const nonRestartActions$: Observable<Action> = merge(
-    gameClock$,
-    createCircles$,
+  const resumeKey$ = key$("keydown", "KeyO").pipe(map(() => false));
+  const pauseKey$ = key$("keydown", "KeyP").pipe(map(() => true));
+  const pauseResume$ = merge(pauseKey$, resumeKey$).subscribe((isPaused) =>
+    pause$.next(isPaused),
+  );
+
+  const pause$ = new BehaviorSubject<boolean>(false);
+  const pass$ = pause$.pipe(filter((isPaused) => !isPaused));
+  const pauseObj$ = pause$.pipe(
+    map((isPaused) => (isPaused ? new Pause(true) : new Pause(false))),
+  );
+
+  const getID = (note: Note) =>
+    parseFloat(`${note.velocity}${note.pitch}${note.start}`);
+
+  const notes$ = from(relativeGroupedNotes).pipe(
+    concatMap((group) =>
+      of(group[0]).pipe(
+        delayWhen(() => pass$),
+        delay(group[0] as number),
+        mergeMap(() =>
+          from(group.slice(1) as ReadonlyArray<Note>).pipe(
+            map((note) => {
+              const ID = getID(note);
+              const userPlayed = note.userPlayed;
+              const column = getColumn(minPitch, maxPitch, note.pitch);
+              const x = (column + 1) * Constants.COLUMN_WIDTH;
+              const circle = createCircle(ID, userPlayed, column, note, x);
+              return new CreateCircle(circle);
+            }),
+          ),
+        ),
+      ),
+    ),
+    concatWith(of(new GameEnd()).pipe(delay(2000))),
+  );
+
+  const ticks$ = interval(Constants.TICK_RATE_MS).pipe(
+    concatMap((tick) =>
+      of(tick).pipe(
+        delayWhen(() => pass$),
+        delay(Constants.TICK_RATE_MS),
+        map(() => new Tick()),
+      ),
+    ),
+    mergeWith(keyOne$, keyTwo$, keyThree$, keyFour$, pauseObj$),
+  );
+
+  const action$: Observable<Action> = merge(
+    ticks$,
+    notes$,
     keyOne$,
     keyTwo$,
     keyThree$,
     keyFour$,
-    // resume$,
-    // pause$,
-  ).pipe(
-    withLatestFrom(pauseResume$),
-    filter(([_, isResumed]) => isResumed),
-    map(([action, _]) => action),
+    pauseObj$,
+    restart$,
   );
-
-  const action$: Observable<Action> = merge(nonRestartActions$, restart$);
 
   const state$: Observable<State> = action$.pipe(scan(reduceState, state));
 
-  const updateViewWithArgs = updateView(csvContents)(samples);
-
   const subscription: Subscription = state$.subscribe(
-    updateViewWithArgs((restart: boolean, state: State) => {
+    updateView(samples, (restart: boolean, state: State) => {
       subscription.unsubscribe();
       if (restart) {
         main(csvContents, samples, state);
       } else {
         const keyRSubscription: Subscription = keyR$
           .pipe(
-            concatMap((event) =>
-              of(event).pipe(tap(() => main(csvContents, samples, state))),
-            ),
-            tap(() => keyRSubscription.unsubscribe()),
+            map(() => {
+              main(csvContents, samples, state);
+              keyRSubscription.unsubscribe();
+            }),
           )
           .subscribe();
       }
@@ -262,27 +190,27 @@ export function main(
   );
 }
 
-function showKeys() {
-  function showKey(k: ClickKey | ExtraKey) {
-    const arrowKey = document.getElementById(k);
-    // getElement might be null, in this case return without doing anything
-    if (!arrowKey) return;
-    const o = (e: Event) =>
-      fromEvent<KeyboardEvent>(document, e).pipe(
-        filter(({ code }) => code === k),
-      );
-    o("keydown").subscribe((e) => arrowKey.classList.add("highlight"));
-    o("keyup").subscribe((_) => arrowKey.classList.remove("highlight"));
-  }
+// function showKeys() {
+//   function showKey(k: ClickKey | ExtraKey) {
+//     const arrowKey = document.getElementById(k);
+//     // getElement might be null, in this case return without doing anything
+//     if (!arrowKey) return;
+//     const o = (e: Event) =>
+//       fromEvent<KeyboardEvent>(document, e).pipe(
+//         filter(({ code }) => code === k),
+//       );
+//     o("keydown").subscribe((e) => arrowKey.classList.add("highlight"));
+//     o("keyup").subscribe((_) => arrowKey.classList.remove("highlight"));
+//   }
 
-  showKey("KeyA");
-  showKey("KeyS");
-  showKey("KeyK");
-  showKey("KeyL");
-  showKey("KeyP");
-  showKey("KeyO");
-  showKey("KeyR");
-}
+//   showKey("KeyA");
+//   showKey("KeyS");
+//   showKey("KeyK");
+//   showKey("KeyL");
+//   showKey("KeyP");
+//   showKey("KeyO");
+//   showKey("KeyR");
+// }
 
 // The following simply runs your main function on window load.  Make sure to leave it in place.
 // You should not need to change this, beware if you are.
@@ -291,12 +219,25 @@ if (typeof window !== "undefined") {
   const samples = SampleLibrary.load({
     instruments: [
       "bass-electric",
-      "violin",
+      "bassoon",
+      "cello",
+      "clarinet",
+      "contrabass",
+      "flute",
+      "french-horn",
+      "guitar-acoustic",
+      "guitar-electric",
+      "guitar-nylon",
+      "harmonium",
+      "harp",
+      "organ",
       "piano",
-      "trumpet",
       "saxophone",
       "trombone",
-      "flute",
+      "trumpet",
+      "tuba",
+      "violin",
+      "xylophone",
     ], // SampleLibrary.list,
     baseUrl: "samples/",
   });
@@ -306,7 +247,7 @@ if (typeof window !== "undefined") {
       "mousedown",
       function () {
         main(contents, samples);
-        showKeys();
+        // showKeys();
       },
       { once: true },
     );
