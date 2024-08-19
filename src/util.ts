@@ -7,15 +7,16 @@ export {
   attr,
   isNotNullOrUndefined,
   getNonOverlappingColumn,
+  getGroupedNotes,
+  getRelativeGroupedNotes,
 };
 
 import * as Tone from "tone";
-import { csvLine, Constants, Circle } from "./types";
-import { min } from "rxjs";
+import { Note, Constants, Circle } from "./types";
 
 /** Utility functions */
 
-const formatLine = (line: string): csvLine => {
+const formatLine = (line: string): Note => {
   const [userPlayed, instrument_name, velocity, pitch, start, end] =
     line.split(",");
   return {
@@ -28,20 +29,20 @@ const formatLine = (line: string): csvLine => {
   };
 };
 
-const parseCSV = (csvContents: string): ReadonlyArray<csvLine> => {
+const parseCSV = (csvContents: string): ReadonlyArray<Note> => {
   return csvContents.trim().split("\n").slice(1).map(formatLine);
 };
 
-const playNote =
-  (samples: { [key: string]: Tone.Sampler }) => (line: csvLine) => {
-    const normalizedVelocity = Math.min(Math.max(line.velocity, 0), 1);
-    samples[line.instrument_name].triggerAttackRelease(
-      Tone.Frequency(line.pitch, "midi").toNote(),
-      line.end - line.start,
-      undefined,
-      normalizedVelocity / Constants.MAX_MIDI_VELOCITY, // Use the normalized velocity directly
-    );
-  };
+const playNote = (samples: { [key: string]: Tone.Sampler }) => (line: Note) => {
+  const normalizedVelocity = Math.min(Math.max(line.velocity, 0), 1);
+
+  samples[line.instrument_name].triggerAttackRelease(
+    Tone.Frequency(line.pitch, "midi").toNote(),
+    line.end - line.start,
+    undefined,
+    normalizedVelocity / Constants.MAX_MIDI_VELOCITY,
+  );
+};
 
 const getColumn = (
   minPitch: number,
@@ -69,12 +70,41 @@ const getNonOverlappingColumn =
     return getNonOverlappingColumn(arr)(circle);
   };
 
-// const getColumn = (pitch: number): number => {
-//   const columnSize = Math.ceil(
-//     Constants.MAX_MIDI_VELOCITY / Constants.NUMBER_OF_COLUMNS,
-//   );
-//   return Math.floor(pitch / columnSize);
-// };
+const getGroupedNotes = (
+  csv: ReadonlyArray<Note>,
+): Readonly<{ [key: string]: ReadonlyArray<Note> }> =>
+  csv.reduce(
+    (acc, note) => {
+      const currentStartTime = (note.start * Constants.S_TO_MS).toFixed(3);
+
+      // Update the notes object with the new note
+      const updatedNotes = {
+        ...acc,
+        [currentStartTime]: [...(acc[currentStartTime] || []), note],
+      };
+
+      // Return the updated accumulator
+      return updatedNotes;
+    },
+    {} as Readonly<{ [key: string]: ReadonlyArray<Note> }>,
+  );
+
+const getRelativeGroupedNotes = (
+  groupedNotes: Readonly<{ [key: string]: ReadonlyArray<Note> }>,
+): ReadonlyArray<ReadonlyArray<number | Note>> =>
+  Object.entries(groupedNotes).reduce(
+    (acc, [start, notes]) => {
+      const relativeStartTime = parseFloat(start) - acc.previousStartTime;
+      return {
+        notes: [...acc.notes, [relativeStartTime, ...notes]],
+        previousStartTime: parseFloat(start),
+      };
+    },
+    {
+      notes: [] as ReadonlyArray<ReadonlyArray<number | Note>>,
+      previousStartTime: 0,
+    },
+  ).notes;
 
 /**
  * Composable not: invert boolean result of given function
