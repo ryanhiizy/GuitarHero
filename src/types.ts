@@ -1,11 +1,11 @@
-export { Constants, Viewport, Note };
-export type { csvLine, ClickKey, ExtraKey, Event, State, Circle, Action };
+export { Constants, Viewport, NoteConstants };
+export type { Note, ClickKey, ExtraKey, Event, State, Circle, Action };
 
 /** Constants */
 
 const Constants = {
   TICK_RATE_MS: 5,
-  SONG_NAME: "past",
+  SONG_NAME: "SleepingBeauty",
   MAX_MIDI_VELOCITY: 127,
   NUMBER_OF_COLUMNS: 4,
   COLUMN_WIDTH: 20,
@@ -27,7 +27,7 @@ const Viewport = {
   CANVAS_HEIGHT: 400,
 } as const;
 
-const Note = {
+const NoteConstants = {
   RADIUS: 0.07 * Viewport.CANVAS_WIDTH,
   TAIL_WIDTH: 10,
 } as const;
@@ -67,10 +67,10 @@ type Circle = Readonly<{
   column: number;
   duration: number;
   isHit: boolean;
-  note: csvLine;
+  note: Note;
 }>;
 
-type csvLine = Readonly<{
+type Note = Readonly<{
   userPlayed: boolean;
   instrument_name: string;
   velocity: number;
