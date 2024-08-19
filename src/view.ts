@@ -1,85 +1,57 @@
-export { createSvgElement, hide, show, updateView };
+export { updateView };
 
 import * as Tone from "tone";
-import { Circle, Constants, ClickKey, Note, State, Viewport } from "./types";
-import {
-  attr,
-  getColumn,
-  getNonOverlappingColumn,
-  isNotNullOrUndefined,
-  not,
-  parseCSV,
-  playNote,
-} from "./util";
-import { filter, fromEvent, map, Observable } from "rxjs";
-import { IState, Restart } from "./state";
-import { main } from "./main";
+import { Circle, Constants, NoteConstants, State, Viewport } from "./types";
+import { attr, isNotNullOrUndefined, playNote } from "./util";
+import { IState } from "./state";
 
 /** Rendering (side effects) */
-
-/**
- * Displays a SVG element on the canvas. Brings to foreground.
- * @param elem SVG element to display
- */
-const show = (elem: SVGGraphicsElement) => {
-  elem.setAttribute("visibility", "visible");
-  elem.parentNode!.appendChild(elem);
-};
-
-/**
- * Hides a SVG element on the canvas.
- * @param elem SVG element to hide
- */
-const hide = (elem: SVGGraphicsElement) =>
-  elem.setAttribute("visibility", "hidden");
-
-/**
- * Creates an SVG element with the given properties.
- *
- * See https://developer.mozilla.org/en-US/docs/Web/SVG/Element for valid
- * element names and properties.
- *
- * @param namespace Namespace of the SVG element
- * @param name SVGElement name
- * @param props Properties to set on the SVG element
- * @returns SVG element
- */
-const createSvgElement = (
-  namespace: string | null,
-  name: string,
-  props: Record<string, string> = {},
-) => {
-  const elem = document.createElementNS(namespace, name) as SVGElement;
-  Object.entries(props).forEach(([k, v]) => elem.setAttribute(k, v));
-  return elem;
-};
-
-// Canvas elements
-const svg = document.querySelector("#svgCanvas") as SVGGraphicsElement &
-  HTMLElement;
-const preview = document.querySelector("#svgPreview") as SVGGraphicsElement &
-  HTMLElement;
-const gameover = document.querySelector("#gameOver") as SVGGraphicsElement &
-  HTMLElement;
-const container = document.querySelector("#main") as HTMLElement;
-const paused = document.querySelector("#paused") as SVGGraphicsElement &
-  HTMLElement;
-
-// Text fields
-const multiplier = document.querySelector("#multiplierText") as HTMLElement;
-const scoreText = document.querySelector("#scoreText") as HTMLElement;
-const highScoreText = document.querySelector("#highScoreText") as HTMLElement;
-const comboText = document.querySelector("#comboText") as HTMLElement;
-
-// Update canvas size
-svg.setAttribute("height", `${Viewport.CANVAS_HEIGHT}`);
-svg.setAttribute("width", `${Viewport.CANVAS_WIDTH}`);
 
 const updateView = (
   samples: { [key: string]: Tone.Sampler },
   onFinish: (restart: boolean, state: State) => void,
 ) => {
   return (state: State): void => {
+    /**
+     * Displays a SVG element on the canvas. Brings to foreground.
+     * @param elem SVG element to display
+     */
+    const show = (elem: SVGGraphicsElement) => {
+      elem.setAttribute("visibility", "visible");
+      elem.parentNode!.appendChild(elem);
+    };
+
+    /**
+     * Hides a SVG element on the canvas.
+     * @param elem SVG element to hide
+     */
+    const hide = (elem: SVGGraphicsElement) =>
+      elem.setAttribute("visibility", "hidden");
+
+    // Canvas elements
+    const svg = document.querySelector("#svgCanvas") as SVGGraphicsElement &
+      HTMLElement;
+    const preview = document.querySelector(
+      "#svgPreview",
+    ) as SVGGraphicsElement & HTMLElement;
+    const gameover = document.querySelector("#gameOver") as SVGGraphicsElement &
+      HTMLElement;
+    const container = document.querySelector("#main") as HTMLElement;
+    const paused = document.querySelector("#paused") as SVGGraphicsElement &
+      HTMLElement;
+
+    // Text fields
+    const multiplier = document.querySelector("#multiplierText") as HTMLElement;
+    const scoreText = document.querySelector("#scoreText") as HTMLElement;
+    const highScoreText = document.querySelector(
+      "#highScoreText",
+    ) as HTMLElement;
+    const comboText = document.querySelector("#comboText") as HTMLElement;
+
+    // Update canvas size
+    svg.setAttribute("height", `${Viewport.CANVAS_HEIGHT}`);
+    svg.setAttribute("width", `${Viewport.CANVAS_WIDTH}`);
+
     // Show or hide paused state
     if (state.paused) {
       show(paused);
@@ -97,10 +69,14 @@ const updateView = (
         const color = Constants.NOTE_COLORS[circle.column];
         attr(element, {
           id: circle.id,
-          r: Note.RADIUS,
+          r: NoteConstants.RADIUS,
           cx: `${circle.x}%`,
-          style: `fill: ${color}`,
-          class: "playable outline",
+          // style: `fill: ${color}`,
+          // class: "playable outline",
+          class: "playable",
+          fill: `url(#${color}Gradient)`,
+          stroke: "transparent",
+          "stroke-width": "2",
         });
         rootSVG.appendChild(element);
         return element;
