@@ -8,7 +8,9 @@ export {
   isNotNullOrUndefined,
   getNonOverlappingColumn,
   getGroupedNotes,
-  getRelativeGroupedNotes,
+  getMinPitch,
+  getMaxPitch,
+  createCircle,
 };
 
 import * as Tone from "tone";
@@ -16,9 +18,34 @@ import { Note, Constants, Circle } from "./types";
 
 /** Utility functions */
 
+const getPlayablePitches = (csv: ReadonlyArray<Note>): ReadonlyArray<number> =>
+  csv.filter((note) => note.userPlayed).map((note) => note.pitch);
+
+const getMinPitch = (csv: ReadonlyArray<Note>): number => Math.min(...getPlayablePitches(csv));
+
+const getMaxPitch = (csv: ReadonlyArray<Note>): number => Math.max(...getPlayablePitches(csv));
+
+const getID = (note: Note) => parseFloat(`${note.velocity}${note.pitch}${note.start}`);
+
+const createCircle = (note: Note, minPitch: number, maxPitch: number): Circle => {
+  const ID = getID(note);
+  const column = getColumn(note.pitch, minPitch, maxPitch);
+  const x = (column + 1) * Constants.COLUMN_WIDTH;
+
+  return {
+    id: ID,
+    x: x,
+    y: 0,
+    userPlayed: note.userPlayed,
+    column: column,
+    duration: 0,
+    isHit: false,
+    note,
+  };
+};
+
 const formatLine = (line: string): Note => {
-  const [userPlayed, instrument_name, velocity, pitch, start, end] =
-    line.split(",");
+  const [userPlayed, instrument_name, velocity, pitch, start, end] = line.split(",");
   return {
     userPlayed: userPlayed === "True",
     instrument_name,
@@ -33,7 +60,7 @@ const parseCSV = (csvContents: string): ReadonlyArray<Note> => {
   return csvContents.trim().split("\n").slice(1).map(formatLine);
 };
 
-const playNote = (samples: { [key: string]: Tone.Sampler }) => (line: Note) => {
+const playNote = (samples: { [key: string]: Tone.Sampler }, line: Note) => {
   const normalizedVelocity = Math.min(Math.max(line.velocity, 0), 1);
 
   samples[line.instrument_name].triggerAttackRelease(
@@ -44,11 +71,7 @@ const playNote = (samples: { [key: string]: Tone.Sampler }) => (line: Note) => {
   );
 };
 
-const getColumn = (
-  minPitch: number,
-  maxPitch: number,
-  pitch: number,
-): number => {
+const getColumn = (pitch: number, minPitch: number, maxPitch: number): number => {
   const columnSize = (maxPitch - minPitch) / Constants.NUMBER_OF_COLUMNS;
   const column = Math.floor((pitch - minPitch) / columnSize);
   return column === Constants.NUMBER_OF_COLUMNS ? column - 1 : column;
@@ -70,9 +93,7 @@ const getNonOverlappingColumn =
     return getNonOverlappingColumn(arr)(circle);
   };
 
-const getGroupedNotes = (
-  csv: ReadonlyArray<Note>,
-): Readonly<{ [key: string]: ReadonlyArray<Note> }> =>
+const getGroupedNotesHelper = (csv: ReadonlyArray<Note>): Readonly<{ [key: string]: ReadonlyArray<Note> }> =>
   csv.reduce(
     (acc, note) => {
       const currentStartTime = (note.start * Constants.S_TO_MS).toFixed(3);
@@ -89,10 +110,10 @@ const getGroupedNotes = (
     {} as Readonly<{ [key: string]: ReadonlyArray<Note> }>,
   );
 
-const getRelativeGroupedNotes = (
-  groupedNotes: Readonly<{ [key: string]: ReadonlyArray<Note> }>,
-): ReadonlyArray<ReadonlyArray<number | Note>> =>
-  Object.entries(groupedNotes).reduce(
+const getGroupedNotes = (csv: ReadonlyArray<Note>): ReadonlyArray<ReadonlyArray<number | Note>> => {
+  const groupedNotes = getGroupedNotesHelper(csv);
+
+  return Object.entries(groupedNotes).reduce(
     (acc, [start, notes]) => {
       const relativeStartTime = parseFloat(start) - acc.previousStartTime;
       return {
@@ -105,6 +126,7 @@ const getRelativeGroupedNotes = (
       previousStartTime: 0,
     },
   ).notes;
+};
 
 /**
  * Composable not: invert boolean result of given function
@@ -120,9 +142,7 @@ const not =
  * Type guard for use in filters
  * @param input something that might be null or undefined
  */
-function isNotNullOrUndefined<T extends object>(
-  input: null | undefined | T,
-): input is T {
+function isNotNullOrUndefined<T extends object>(input: null | undefined | T): input is T {
   return input != null;
 }
 

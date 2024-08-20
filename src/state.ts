@@ -1,25 +1,9 @@
-export {
-  IState,
-  ILine,
-  Tick,
-  reduceState,
-  createCircle,
-  CreateCircle,
-  ClickCircle,
-  Restart,
-  GameEnd,
-  Pause,
-};
+export { initialState, Tick, reduceState, CreateCircle, ClickCircle, Restart, GameEnd, Pause };
 
-import { count } from "rxjs";
+import { not } from "./util";
 import { Action, State, Circle, Note, ClickKey, Constants } from "./types";
-import { getColumn, not } from "./util";
 
-///////////////////
-// INITIAL SETUP //
-///////////////////
-
-const IState: State = {
+const initialState: State = {
   score: 0,
   multiplier: 1,
   highscore: 0,
@@ -36,44 +20,13 @@ const IState: State = {
   gameEnd: false,
 } as const;
 
-const ILine: Note = {
-  userPlayed: false,
-  instrument_name: "",
-  velocity: 0,
-  pitch: 0,
-  start: 0,
-  end: 0,
-} as const;
-
-const createCircle = (
-  id: number,
-  userPlayed: boolean,
-  column: number,
-  note: Note,
-  x: number,
-  y: number = 0,
-): Circle => {
-  return {
-    id,
-    x,
-    y,
-    userPlayed,
-    column,
-    duration: 0,
-    isHit: false,
-    note,
-  };
-};
-
 class Tick implements Action {
   apply(s: State): State {
     const { circles, combo, multiplier, time } = s;
 
     const playableCircles = circles.filter((circle) => circle.userPlayed);
     const backgroundCircles = circles.filter(
-      (circle) =>
-        !circle.userPlayed &&
-        circle.duration + Constants.TICK_RATE_MS <= Constants.TRAVEL_MS,
+      (circle) => !circle.userPlayed && circle.duration + Constants.TICK_RATE_MS <= Constants.TRAVEL_MS,
     );
 
     const tickBackgroundCircles = backgroundCircles.map((circle) => ({
@@ -130,10 +83,7 @@ class ClickCircle implements Action {
   apply(s: State): State {
     const column = Constants.COLUMN_KEYS.indexOf(this.key);
     const closeCircles = s.playableCircles.filter((circle) => {
-      return (
-        circle.column === column &&
-        Math.abs(circle.y - Constants.POINT_Y) <= Constants.CLICK_RANGE_Y
-      );
+      return circle.column === column && Math.abs(circle.y - Constants.POINT_Y) <= Constants.CLICK_RANGE_Y;
     });
 
     if (closeCircles.length === 0) {
@@ -146,9 +96,7 @@ class ClickCircle implements Action {
       return distance < closestDistance ? circle : closest;
     });
 
-    const filteredCircles = s.playableCircles.filter(
-      (circle) => circle !== closestCircle,
-    );
+    const filteredCircles = s.playableCircles.filter((circle) => circle !== closestCircle);
 
     // combo/multiplier calculation
     const comboForMultiplier = s.combo + 1 - s.comboCount;

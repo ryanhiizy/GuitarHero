@@ -3,14 +3,11 @@ export { updateView };
 import * as Tone from "tone";
 import { Circle, Constants, NoteConstants, State, Viewport } from "./types";
 import { attr, isNotNullOrUndefined, playNote } from "./util";
-import { IState } from "./state";
+import { initialState } from "./state";
 
 /** Rendering (side effects) */
 
-const updateView = (
-  samples: { [key: string]: Tone.Sampler },
-  onFinish: (restart: boolean, state: State) => void,
-) => {
+const updateView = (samples: { [key: string]: Tone.Sampler }, onFinish: (restart: boolean, state: State) => void) => {
   return (state: State): void => {
     /**
      * Displays a SVG element on the canvas. Brings to foreground.
@@ -25,27 +22,19 @@ const updateView = (
      * Hides a SVG element on the canvas.
      * @param elem SVG element to hide
      */
-    const hide = (elem: SVGGraphicsElement) =>
-      elem.setAttribute("visibility", "hidden");
+    const hide = (elem: SVGGraphicsElement) => elem.setAttribute("visibility", "hidden");
 
     // Canvas elements
-    const svg = document.querySelector("#svgCanvas") as SVGGraphicsElement &
-      HTMLElement;
-    const preview = document.querySelector(
-      "#svgPreview",
-    ) as SVGGraphicsElement & HTMLElement;
-    const gameover = document.querySelector("#gameOver") as SVGGraphicsElement &
-      HTMLElement;
+    const svg = document.querySelector("#svgCanvas") as SVGGraphicsElement & HTMLElement;
+    const preview = document.querySelector("#svgPreview") as SVGGraphicsElement & HTMLElement;
+    const gameover = document.querySelector("#gameOver") as SVGGraphicsElement & HTMLElement;
     const container = document.querySelector("#main") as HTMLElement;
-    const paused = document.querySelector("#paused") as SVGGraphicsElement &
-      HTMLElement;
+    const paused = document.querySelector("#paused") as SVGGraphicsElement & HTMLElement;
 
     // Text fields
     const multiplier = document.querySelector("#multiplierText") as HTMLElement;
     const scoreText = document.querySelector("#scoreText") as HTMLElement;
-    const highScoreText = document.querySelector(
-      "#highScoreText",
-    ) as HTMLElement;
+    const highScoreText = document.querySelector("#highScoreText") as HTMLElement;
     const comboText = document.querySelector("#comboText") as HTMLElement;
 
     // Update canvas size
@@ -62,10 +51,7 @@ const updateView = (
     // Update body view
     const updateBodyView = (rootSVG: HTMLElement) => (circle: Circle) => {
       function createBodyView() {
-        const element = document.createElementNS(
-          rootSVG.namespaceURI,
-          "circle",
-        );
+        const element = document.createElementNS(rootSVG.namespaceURI, "circle");
         const color = Constants.NOTE_COLORS[circle.column];
         attr(element, {
           id: circle.id,
@@ -82,8 +68,7 @@ const updateView = (
         return element;
       }
 
-      const element =
-        document.getElementById(String(circle.id)) || createBodyView();
+      const element = document.getElementById(String(circle.id)) || createBodyView();
       attr(element, { cy: circle.y });
     };
 
@@ -93,20 +78,17 @@ const updateView = (
       if (element) {
         svg.removeChild(element);
         // console.log("remove", performance.now());
-        playNote(samples)(circle.note);
+        playNote(samples, circle.note);
       }
     });
 
     // Update playable circles
-    state.playableCircles.forEach((circle) => {
-      // console.log("playable", performance.now());
-      return updateBodyView(svg)(circle);
-    });
+    state.playableCircles.forEach(updateBodyView(svg));
 
     // Play notes for background circles
     state.backgroundCircles
       .filter((circle) => circle.duration === Constants.TRAVEL_MS)
-      .forEach((circle) => playNote(samples)(circle.note));
+      .forEach((circle) => playNote(samples, circle.note));
 
     // Remove exited circles
     state.exit
@@ -139,14 +121,14 @@ const updateView = (
 
     if (state.restart) {
       clearCircles();
-      onFinish(true, { ...IState, highscore: state.highscore });
+      onFinish(true, { ...initialState, highscore: state.highscore });
     }
 
     if (state.gameEnd) {
       show(gameover);
       clearCircles();
       onFinish(false, {
-        ...IState,
+        ...initialState,
         highscore: Math.max(state.score, state.highscore),
       });
     }

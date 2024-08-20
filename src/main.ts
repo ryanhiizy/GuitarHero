@@ -14,75 +14,23 @@
 
 import "./style.css";
 import * as Tone from "tone";
-import { SampleLibrary } from "./tonejs-instruments";
 import { updateView } from "./view";
-import {
-  parseCSV,
-  getColumn,
-  getGroupedNotes,
-  getRelativeGroupedNotes,
-} from "./util";
-import {
-  BehaviorSubject,
-  from,
-  fromEvent,
-  interval,
-  merge,
-  Observable,
-  of,
-  Subscription,
-} from "rxjs";
-import {
-  map,
-  filter,
-  scan,
-  mergeMap,
-  mergeWith,
-  delay,
-  concatMap,
-  delayWhen,
-  concatWith,
-} from "rxjs/operators";
-import {
-  Constants,
-  ClickKey,
-  ExtraKey,
-  Event,
-  State,
-  Action,
-  Note,
-} from "./types";
-import {
-  IState,
-  Tick,
-  reduceState,
-  ClickCircle,
-  Restart,
-  GameEnd,
-  Pause,
-  createCircle,
-  CreateCircle,
-} from "./state";
+import { SampleLibrary } from "./tonejs-instruments";
+import { Constants, ClickKey, ExtraKey, Event, State, Action, Note } from "./types";
+import { parseCSV, getGroupedNotes, getMinPitch, getMaxPitch, createCircle } from "./util";
+import { map, filter, scan, mergeMap, delay, concatMap, delayWhen, concatWith } from "rxjs/operators";
+import { BehaviorSubject, from, fromEvent, interval, merge, Observable, of, Subscription } from "rxjs";
+import { initialState, Tick, reduceState, ClickCircle, Restart, GameEnd, Pause, CreateCircle } from "./state";
 
 /**
  * This is the function called on page load. Your main game loop
  * should be called here.
  */
-export function main(
-  csvContents: string,
-  samples: { [key: string]: Tone.Sampler },
-  state: State = IState,
-) {
-  const csv = parseCSV(csvContents);
-  const pitches = csv
-    .filter((line) => line.userPlayed)
-    .map((line) => line.pitch);
-  const minPitch = Math.min(...pitches);
-  const maxPitch = Math.max(...pitches);
-
-  const groupedNotes = getGroupedNotes(csv);
-
-  const relativeGroupedNotes = getRelativeGroupedNotes(groupedNotes);
+export function main(csvContents: string, samples: { [key: string]: Tone.Sampler }, state: State = initialState) {
+  const csvArray = parseCSV(csvContents);
+  const minPitch = getMinPitch(csvArray);
+  const maxPitch = getMaxPitch(csvArray);
+  const groupedNotes = getGroupedNotes(csvArray);
 
   const key$ = (e: Event, k: ClickKey | ExtraKey) =>
     fromEvent<KeyboardEvent>(document, e).pipe(
@@ -90,42 +38,29 @@ export function main(
       filter(({ repeat }) => !repeat),
     );
 
-  const keyOne$ = key$("keydown", "KeyA").pipe(
-    map(({ code }) => new ClickCircle(code as ClickKey)),
-  );
-  const keyTwo$ = key$("keydown", "KeyS").pipe(
-    map(({ code }) => new ClickCircle(code as ClickKey)),
-  );
-  const keyThree$ = key$("keydown", "KeyK").pipe(
-    map(({ code }) => new ClickCircle(code as ClickKey)),
-  );
-  const keyFour$ = key$("keydown", "KeyL").pipe(
-    map(({ code }) => new ClickCircle(code as ClickKey)),
-  );
+  const keyDownOne$ = key$("keydown", "KeyA").pipe(map(({ code }) => new ClickCircle(code as ClickKey)));
+  const keyDownTwo$ = key$("keydown", "KeyS").pipe(map(({ code }) => new ClickCircle(code as ClickKey)));
+  const keyDownThree$ = key$("keydown", "KeyK").pipe(map(({ code }) => new ClickCircle(code as ClickKey)));
+  const keyDownFour$ = key$("keydown", "KeyL").pipe(map(({ code }) => new ClickCircle(code as ClickKey)));
+
+  const keyUpOne$ = key$("keyup", "KeyA").pipe(map(({ code }) => new ClickCircle(code as ClickKey)));
+  const keyUpTwo$ = key$("keyup", "KeyS").pipe(map(({ code }) => new ClickCircle(code as ClickKey)));
+  const keyUpThree$ = key$("keyup", "KeyK").pipe(map(({ code }) => new ClickCircle(code as ClickKey)));
+  const keyUpFour$ = key$("keyup", "KeyL").pipe(map(({ code }) => new ClickCircle(code as ClickKey)));
 
   const keyR$ = key$("keydown", "KeyR");
-  const restart$ = keyR$.pipe(
-    map(() => {
-      return new Restart();
-    }),
-  );
+  const restart$ = keyR$.pipe(map(() => new Restart()));
 
   const resumeKey$ = key$("keydown", "KeyO").pipe(map(() => false));
   const pauseKey$ = key$("keydown", "KeyP").pipe(map(() => true));
-  const pauseResume$ = merge(pauseKey$, resumeKey$).subscribe((isPaused) =>
-    pause$.next(isPaused),
-  );
 
-  const pause$ = new BehaviorSubject<boolean>(false);
-  const pass$ = pause$.pipe(filter((isPaused) => !isPaused));
-  const pauseObj$ = pause$.pipe(
-    map((isPaused) => (isPaused ? new Pause(true) : new Pause(false))),
-  );
+  const pauseBehaviour$ = new BehaviorSubject<boolean>(false);
+  const pass$ = pauseBehaviour$.pipe(filter((isPaused) => !isPaused));
+  const pauseStatus$ = pauseBehaviour$.pipe(map((isPaused) => (isPaused ? new Pause(true) : new Pause(false))));
 
-  const getID = (note: Note) =>
-    parseFloat(`${note.velocity}${note.pitch}${note.start}`);
+  merge(pauseKey$, resumeKey$).subscribe((isPaused) => pauseBehaviour$.next(isPaused));
 
-  const notes$ = from(relativeGroupedNotes).pipe(
+  const notes$ = from(groupedNotes).pipe(
     concatMap((group) =>
       of(group[0]).pipe(
         delayWhen(() => pass$),
@@ -133,11 +68,7 @@ export function main(
         mergeMap(() =>
           from(group.slice(1) as ReadonlyArray<Note>).pipe(
             map((note) => {
-              const ID = getID(note);
-              const userPlayed = note.userPlayed;
-              const column = getColumn(minPitch, maxPitch, note.pitch);
-              const x = (column + 1) * Constants.COLUMN_WIDTH;
-              const circle = createCircle(ID, userPlayed, column, note, x);
+              const circle = createCircle(note, minPitch, maxPitch);
               return new CreateCircle(circle);
             }),
           ),
@@ -155,17 +86,20 @@ export function main(
         map(() => new Tick()),
       ),
     ),
-    mergeWith(keyOne$, keyTwo$, keyThree$, keyFour$, pauseObj$),
   );
 
   const action$: Observable<Action> = merge(
     ticks$,
     notes$,
-    keyOne$,
-    keyTwo$,
-    keyThree$,
-    keyFour$,
-    pauseObj$,
+    keyDownOne$,
+    keyDownTwo$,
+    keyDownThree$,
+    keyDownFour$,
+    keyUpOne$,
+    keyUpTwo$,
+    keyUpThree$,
+    keyUpFour$,
+    pauseStatus$,
     restart$,
   );
 
@@ -174,6 +108,7 @@ export function main(
   const subscription: Subscription = state$.subscribe(
     updateView(samples, (restart: boolean, state: State) => {
       subscription.unsubscribe();
+
       if (restart) {
         main(csvContents, samples, state);
       } else {
@@ -190,55 +125,12 @@ export function main(
   );
 }
 
-// function showKeys() {
-//   function showKey(k: ClickKey | ExtraKey) {
-//     const arrowKey = document.getElementById(k);
-//     // getElement might be null, in this case return without doing anything
-//     if (!arrowKey) return;
-//     const o = (e: Event) =>
-//       fromEvent<KeyboardEvent>(document, e).pipe(
-//         filter(({ code }) => code === k),
-//       );
-//     o("keydown").subscribe((e) => arrowKey.classList.add("highlight"));
-//     o("keyup").subscribe((_) => arrowKey.classList.remove("highlight"));
-//   }
-
-//   showKey("KeyA");
-//   showKey("KeyS");
-//   showKey("KeyK");
-//   showKey("KeyL");
-//   showKey("KeyP");
-//   showKey("KeyO");
-//   showKey("KeyR");
-// }
-
 // The following simply runs your main function on window load.  Make sure to leave it in place.
 // You should not need to change this, beware if you are.
 if (typeof window !== "undefined") {
   // Load in the instruments and then start your game!
   const samples = SampleLibrary.load({
-    instruments: [
-      "bass-electric",
-      "bassoon",
-      "cello",
-      "clarinet",
-      "contrabass",
-      "flute",
-      "french-horn",
-      "guitar-acoustic",
-      "guitar-electric",
-      "guitar-nylon",
-      "harmonium",
-      "harp",
-      "organ",
-      "piano",
-      "saxophone",
-      "trombone",
-      "trumpet",
-      "tuba",
-      "violin",
-      "xylophone",
-    ], // SampleLibrary.list,
+    instruments: ["bass-electric", "flute", "piano", "saxophone", "trombone", "trumpet", "violin"], // SampleLibrary.list,
     baseUrl: "samples/",
   });
 
@@ -247,7 +139,6 @@ if (typeof window !== "undefined") {
       "mousedown",
       function () {
         main(contents, samples);
-        // showKeys();
       },
       { once: true },
     );
