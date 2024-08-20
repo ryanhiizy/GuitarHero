@@ -1,11 +1,24 @@
 export { Constants, Viewport, NoteConstants };
-export type { Note, ClickKey, ExtraKey, Event, State, Circle, Action };
+export type {
+  Note,
+  ClickKey,
+  ExtraKey,
+  Event,
+  State,
+  ICircle,
+  IHitCircle,
+  IHoldCircle,
+  IBackgroundCircle,
+  Action,
+};
+
+import * as Tone from "tone";
 
 /** Constants */
 
 const Constants = {
   TICK_RATE_MS: 5,
-  SONG_NAME: "SleepingBeauty",
+  SONG_NAME: "past",
   MAX_MIDI_VELOCITY: 127,
   NUMBER_OF_COLUMNS: 4,
   COLUMN_WIDTH: 20,
@@ -16,7 +29,7 @@ const Constants = {
   EXPIRED_Y: 430,
   POINT_Y: 350,
   TRAVEL_Y_PER_TICK: 3.5,
-  CLICK_RANGE_Y: 40,
+  CLICK_RANGE_Y: 25,
   SCORE_PER_HIT: 10,
   MULTIPLIER_INCREMENT: 0.2,
   COMBO_FOR_MULTIPLIER: 10,
@@ -49,35 +62,47 @@ type State = Readonly<{
   combo: number;
   comboCount: number;
   time: number;
-  circles: ReadonlyArray<Circle>;
-  playableCircles: ReadonlyArray<Circle>;
-  backgroundCircles: ReadonlyArray<Circle>;
-  exit: ReadonlyArray<Circle>;
-  hitCircles: ReadonlyArray<Circle>;
+  circles: ReadonlyArray<ICircle>;
+  hitCircles: ReadonlyArray<IHitCircle>;
+  backgroundCircles: ReadonlyArray<IBackgroundCircle>;
+  clickedCircles: ReadonlyArray<IHitCircle>;
+  exit: ReadonlyArray<IHitCircle>;
   paused: boolean;
   restart: boolean;
   gameEnd: boolean;
 }>;
 
-type Circle = Readonly<{
-  id: number;
-  x: number;
-  y: number;
-  userPlayed: boolean;
-  column: number;
-  duration: number;
-  isHit: boolean;
-  note: Note;
-}>;
-
 type Note = Readonly<{
   userPlayed: boolean;
-  instrument_name: string;
+  instrumentName: string;
   velocity: number;
   pitch: number;
   start: number;
   end: number;
 }>;
+
+interface ICircle {
+  id: number;
+  note: Note;
+
+  tick(s: State): State;
+}
+
+interface IHitCircle extends ICircle {
+  cx: number;
+  cy: number;
+  isHit: boolean;
+  column: number;
+  duration: number;
+}
+
+interface IHoldCircle extends IHitCircle {
+  synth: Tone.Synth<Tone.SynthOptions>;
+}
+
+interface IBackgroundCircle extends ICircle {
+  timePassed: number;
+}
 
 /**
  * Actions modify state
