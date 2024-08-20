@@ -22,47 +22,112 @@ const initialState: State = {
 
 class Tick implements Action {
   apply(s: State): State {
-    const { circles, combo, multiplier, time } = s;
+    const { circles, combo, multiplier, time, score, highscore } = s;
 
-    const playableCircles = circles.filter((circle) => circle.userPlayed);
-    const backgroundCircles = circles.filter(
-      (circle) => !circle.userPlayed && circle.duration + Constants.TICK_RATE_MS <= Constants.TRAVEL_MS,
-    );
+    const playableCircles = circles.filter(this.isPlayable);
+    const backgroundCircles = circles.filter(this.isBackground);
 
-    const tickBackgroundCircles = backgroundCircles.map((circle) => ({
-      ...circle,
-      duration: circle.duration + Constants.TICK_RATE_MS,
-    }));
+    const expiredCircles = playableCircles.filter(this.isExpired);
+    const activeCircles = playableCircles.filter(not(this.isExpired));
 
-    const expired = (circle: Circle) => circle.y >= Constants.EXPIRED_Y;
-    const expiredCircles = playableCircles.filter(expired);
-    const activeCircles = playableCircles.filter(not(expired));
-
-    const moveActiveCircles = activeCircles.map(this.moveCircle);
+    const updatedActiveCircles = activeCircles.map(this.incrementY);
+    const updatedBackgroundCircles = backgroundCircles.map(this.incrementDuration);
 
     const newCombo = expiredCircles.length === 0 ? combo : 0;
     const newMultiplier = newCombo === 0 ? 1 : multiplier;
+    const newHighscore = Math.max(score, highscore);
+    const newTime = time + Constants.TICK_RATE_MS;
 
     return {
       ...s,
-      highscore: Math.max(s.score, s.highscore),
+      highscore: newHighscore,
       combo: newCombo,
       multiplier: newMultiplier,
-      time: time + Constants.TICK_RATE_MS,
-      circles: [...moveActiveCircles, ...tickBackgroundCircles],
+      time: newTime,
+      circles: [...updatedActiveCircles, ...updatedBackgroundCircles],
       playableCircles: activeCircles,
-      backgroundCircles: tickBackgroundCircles,
+      backgroundCircles: updatedBackgroundCircles,
       hitCircles: [],
       exit: expiredCircles,
       restart: false,
     };
   }
 
-  moveCircle = (circle: Circle): Circle => {
+  isPlayable = (circle: Circle) => circle.userPlayed;
+
+  isBackground = (circle: Circle) =>
+    !circle.userPlayed && circle.duration + Constants.TICK_RATE_MS <= Constants.TRAVEL_MS;
+
+  isExpired = (circle: Circle) => circle.y >= Constants.EXPIRED_Y;
+
+  incrementDuration = (circle: Circle): Circle => ({
+    ...circle,
+    duration: circle.duration + Constants.TICK_RATE_MS,
+  });
+
+  incrementY = (circle: Circle): Circle => ({
+    ...circle,
+    y: circle.y + Constants.TRAVEL_Y_PER_TICK,
+  });
+}
+
+class ClickCircle implements Action {
+  constructor(public readonly key: ClickKey) {}
+
+  apply(s: State): State {
+    const { playableCircles, combo, comboCount, multiplier, score, backgroundCircles, hitCircles } = s;
+
+    const column = Constants.COLUMN_KEYS.indexOf(this.key);
+    const closeCircles = playableCircles.filter(this.isClose(column));
+
+    if (closeCircles.length === 0) {
+      return s;
+    }
+
+    const closestCircle = this.findClosestCircle(closeCircles);
+    const filteredCircles = playableCircles.filter(not(this.isClosestCircle(closestCircle)));
+    const updateClosestCircle = this.setHit(closestCircle);
+
+    const newCombo = combo + 1;
+    const newComboCount = Math.floor(newCombo / 10) * 10;
+    const newMultiplier = this.calculateMultiplier(combo, comboCount, multiplier);
+    const formatMultiplier = parseFloat(newMultiplier.toFixed(1));
+    const newScore = score + Constants.SCORE_PER_HIT * multiplier;
+
     return {
-      ...circle,
-      y: circle.y + Constants.TRAVEL_Y_PER_TICK,
+      ...s,
+      multiplier: formatMultiplier,
+      score: newScore,
+      combo: newCombo,
+      comboCount: newComboCount,
+      circles: [...filteredCircles, ...backgroundCircles],
+      playableCircles: filteredCircles,
+      hitCircles: [...hitCircles, updateClosestCircle],
     };
+  }
+
+  setHit = (circle: Circle): Circle => ({
+    ...circle,
+    isHit: true,
+  });
+
+  isClosestCircle = (closest: Circle) => (circle: Circle) => circle === closest;
+
+  isClose = (column: number) => (circle: Circle) =>
+    circle.column === column && Math.abs(circle.y - Constants.POINT_Y) <= Constants.CLICK_RANGE_Y;
+
+  findClosestCircle = (circles: ReadonlyArray<Circle>): Circle =>
+    circles.reduce((closest, circle) => {
+      const closestDistance = Math.abs(closest.y - Constants.POINT_Y);
+      const distance = Math.abs(circle.y - Constants.POINT_Y);
+      return distance < closestDistance ? circle : closest;
+    });
+
+  calculateMultiplier = (combo: number, comboCount: number, multiplier: number): number => {
+    const comboForMultiplier = combo + 1 - comboCount;
+    return comboForMultiplier === Constants.COMBO_FOR_MULTIPLIER
+      ? multiplier + Constants.MULTIPLIER_INCREMENT
+      : multiplier;
   };
 }
 
@@ -73,47 +138,6 @@ class CreateCircle implements Action {
     return {
       ...s,
       circles: [...s.circles, this.circle],
-    };
-  }
-}
-
-class ClickCircle implements Action {
-  constructor(public readonly key: ClickKey) {}
-
-  apply(s: State): State {
-    const column = Constants.COLUMN_KEYS.indexOf(this.key);
-    const closeCircles = s.playableCircles.filter((circle) => {
-      return circle.column === column && Math.abs(circle.y - Constants.POINT_Y) <= Constants.CLICK_RANGE_Y;
-    });
-
-    if (closeCircles.length === 0) {
-      return s;
-    }
-
-    const closestCircle = closeCircles.reduce((closest, circle) => {
-      const closestDistance = Math.abs(closest.y - Constants.POINT_Y);
-      const distance = Math.abs(circle.y - Constants.POINT_Y);
-      return distance < closestDistance ? circle : closest;
-    });
-
-    const filteredCircles = s.playableCircles.filter((circle) => circle !== closestCircle);
-
-    // combo/multiplier calculation
-    const comboForMultiplier = s.combo + 1 - s.comboCount;
-    const multiplier =
-      comboForMultiplier === Constants.COMBO_FOR_MULTIPLIER
-        ? s.multiplier + Constants.MULTIPLIER_INCREMENT
-        : s.multiplier;
-
-    return {
-      ...s,
-      multiplier: parseFloat(multiplier.toFixed(1)),
-      score: s.score + Constants.SCORE_PER_HIT * s.multiplier,
-      combo: s.combo + 1,
-      comboCount: Math.floor(s.combo / 10) * 10,
-      circles: [...filteredCircles, ...s.backgroundCircles],
-      playableCircles: filteredCircles,
-      hitCircles: [...s.hitCircles, { ...closestCircle, isHit: true }],
     };
   }
 }
