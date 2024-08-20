@@ -42,6 +42,7 @@ import {
   concatMap,
   delayWhen,
   concatWith,
+  tap,
 } from "rxjs/operators";
 import {
   Constants,
@@ -51,18 +52,23 @@ import {
   State,
   Action,
   Note,
+  ICircle,
 } from "./types";
 import {
-  IState,
+  initialState,
   Tick,
   reduceState,
   ClickCircle,
   Restart,
   GameEnd,
   Pause,
-  createCircle,
-  CreateCircle,
 } from "./state";
+import {
+  HitCircle,
+  BackgroundCircle,
+  HoldCircle,
+  createCircle,
+} from "./circle";
 
 /**
  * This is the function called on page load. Your main game loop
@@ -71,7 +77,7 @@ import {
 export function main(
   csvContents: string,
   samples: { [key: string]: Tone.Sampler },
-  state: State = IState,
+  state: State = initialState,
 ) {
   const csv = parseCSV(csvContents);
   const pitches = csv
@@ -90,16 +96,30 @@ export function main(
       filter(({ repeat }) => !repeat),
     );
 
-  const keyOne$ = key$("keydown", "KeyA").pipe(
+  const keyDownOne$ = key$("keydown", "KeyA").pipe(
     map(({ code }) => new ClickCircle(code as ClickKey)),
   );
-  const keyTwo$ = key$("keydown", "KeyS").pipe(
+  const keyDownTwo$ = key$("keydown", "KeyS").pipe(
     map(({ code }) => new ClickCircle(code as ClickKey)),
   );
-  const keyThree$ = key$("keydown", "KeyK").pipe(
+  const keyDownThree$ = key$("keydown", "KeyK").pipe(
     map(({ code }) => new ClickCircle(code as ClickKey)),
   );
-  const keyFour$ = key$("keydown", "KeyL").pipe(
+  const keyDownFour$ = key$("keydown", "KeyL").pipe(
+    map(({ code }) => new ClickCircle(code as ClickKey)),
+  );
+
+  const keyUpOne$ = key$("keyup", "KeyA").pipe(
+    map(({ code }) => new ClickCircle(code as ClickKey)),
+  );
+  const keyUpTwo$ = key$("keyup", "KeyS").pipe(
+    map(({ code }) => new ClickCircle(code as ClickKey)),
+  );
+  const keyUpThree$ = key$("keyup", "KeyK").pipe(
+    tap(console.log),
+    map(({ code }) => new ClickCircle(code as ClickKey)),
+  );
+  const keyUpFour$ = key$("keyup", "KeyL").pipe(
     map(({ code }) => new ClickCircle(code as ClickKey)),
   );
 
@@ -122,24 +142,15 @@ export function main(
     map((isPaused) => (isPaused ? new Pause(true) : new Pause(false))),
   );
 
-  const getID = (note: Note) =>
-    parseFloat(`${note.velocity}${note.pitch}${note.start}`);
-
   const notes$ = from(relativeGroupedNotes).pipe(
+    delay(600),
     concatMap((group) =>
       of(group[0]).pipe(
         delayWhen(() => pass$),
         delay(group[0] as number),
         mergeMap(() =>
           from(group.slice(1) as ReadonlyArray<Note>).pipe(
-            map((note) => {
-              const ID = getID(note);
-              const userPlayed = note.userPlayed;
-              const column = getColumn(minPitch, maxPitch, note.pitch);
-              const x = (column + 1) * Constants.COLUMN_WIDTH;
-              const circle = createCircle(ID, userPlayed, column, note, x);
-              return new CreateCircle(circle);
-            }),
+            map((note) => createCircle(note, minPitch, maxPitch)),
           ),
         ),
       ),
@@ -155,21 +166,33 @@ export function main(
         map(() => new Tick()),
       ),
     ),
-    mergeWith(keyOne$, keyTwo$, keyThree$, keyFour$, pauseObj$),
   );
 
   const action$: Observable<Action> = merge(
     ticks$,
     notes$,
-    keyOne$,
-    keyTwo$,
-    keyThree$,
-    keyFour$,
+    keyDownOne$,
+    keyDownTwo$,
+    keyDownThree$,
+    keyDownFour$,
+    keyUpOne$,
+    keyUpTwo$,
+    keyUpThree$,
+    keyUpFour$,
     pauseObj$,
     restart$,
   );
 
   const state$: Observable<State> = action$.pipe(scan(reduceState, state));
+
+  const note: Note = {
+    userPlayed: true,
+    instrumentName: "piano",
+    velocity: 1,
+    pitch: 60,
+    start: 0,
+    end: 1,
+  };
 
   const subscription: Subscription = state$.subscribe(
     updateView(samples, (restart: boolean, state: State) => {
