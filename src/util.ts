@@ -6,22 +6,26 @@ export {
   not,
   attr,
   isNotNullOrUndefined,
-  getNonOverlappingColumn,
+  // getNonOverlappingColumn,
+  getID,
   getGroupedNotes,
   getRelativeGroupedNotes,
 };
 
 import * as Tone from "tone";
-import { Note, Constants, Circle } from "./types";
+import { Note, Constants, ICircle, IHitCircle } from "./types";
 
 /** Utility functions */
 
+const getID = (note: Note) =>
+  parseFloat(`${note.velocity}${note.pitch}${note.start}`);
+
 const formatLine = (line: string): Note => {
-  const [userPlayed, instrument_name, velocity, pitch, start, end] =
+  const [userPlayed, instrumentName, velocity, pitch, start, end] =
     line.split(",");
   return {
     userPlayed: userPlayed === "True",
-    instrument_name,
+    instrumentName,
     velocity: parseInt(velocity),
     pitch: parseInt(pitch),
     start: parseFloat(start),
@@ -33,10 +37,10 @@ const parseCSV = (csvContents: string): ReadonlyArray<Note> => {
   return csvContents.trim().split("\n").slice(1).map(formatLine);
 };
 
-const playNote = (samples: { [key: string]: Tone.Sampler }) => (line: Note) => {
+const playNote = (samples: { [key: string]: Tone.Sampler }, line: Note) => {
   const normalizedVelocity = Math.min(Math.max(line.velocity, 0), 1);
 
-  samples[line.instrument_name].triggerAttackRelease(
+  samples[line.instrumentName].triggerAttackRelease(
     Tone.Frequency(line.pitch, "midi").toNote(),
     line.end - line.start,
     undefined,
@@ -54,21 +58,21 @@ const getColumn = (
   return column === Constants.NUMBER_OF_COLUMNS ? column - 1 : column;
 };
 
-const getNonOverlappingColumn =
-  (arr: ReadonlyArray<Circle | undefined>) =>
-  (
-    circle: Circle,
-  ): Readonly<{
-    circle: Circle;
-    column: number;
-  }> => {
-    const column = circle.column;
-    if (arr[column] === undefined) {
-      return { circle, column };
-    }
-    const nextColumn = !column ? Constants.NUMBER_OF_COLUMNS : column - 1;
-    return getNonOverlappingColumn(arr)(circle);
-  };
+// const getNonOverlappingColumn =
+//   (arr: ReadonlyArray<ICircle | undefined>) =>
+//   (
+//     circle: ICircle,
+//   ): Readonly<{
+//     circle: ICircle;
+//     column: number;
+//   }> => {
+//     const column = circle.column;
+//     if (arr[column] === undefined) {
+//       return { circle, column };
+//     }
+//     const nextColumn = !column ? Constants.NUMBER_OF_COLUMNS : column - 1;
+//     return getNonOverlappingColumn(arr)(circle);
+//   };
 
 const getGroupedNotes = (
   csv: ReadonlyArray<Note>,
