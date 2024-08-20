@@ -1,17 +1,24 @@
 export { updateView };
 
 import * as Tone from "tone";
-import { Circle, Constants, NoteConstants, State, Viewport } from "./types";
+import {
+  ICircle,
+  Constants,
+  NoteConstants,
+  State,
+  Viewport,
+  IHitCircle,
+} from "./types";
 import { attr, isNotNullOrUndefined, playNote } from "./util";
-import { IState } from "./state";
+import { initialState } from "./state";
 
 /** Rendering (side effects) */
 
 const updateView = (
   samples: { [key: string]: Tone.Sampler },
-  onFinish: (restart: boolean, state: State) => void,
+  onFinish: (restart: boolean, s: State) => void,
 ) => {
-  return (state: State): void => {
+  return (s: State): void => {
     /**
      * Displays a SVG element on the canvas. Brings to foreground.
      * @param elem SVG element to display
@@ -53,14 +60,14 @@ const updateView = (
     svg.setAttribute("width", `${Viewport.CANVAS_WIDTH}`);
 
     // Show or hide paused state
-    if (state.paused) {
+    if (s.paused) {
       show(paused);
     } else {
       hide(paused);
     }
 
     // Update body view
-    const updateBodyView = (rootSVG: HTMLElement) => (circle: Circle) => {
+    const updateBodyView = (rootSVG: HTMLElement) => (circle: IHitCircle) => {
       function createBodyView() {
         const element = document.createElementNS(
           rootSVG.namespaceURI,
@@ -70,7 +77,7 @@ const updateView = (
         attr(element, {
           id: circle.id,
           r: NoteConstants.RADIUS,
-          cx: `${circle.x}%`,
+          cx: `${circle.cx}%`,
           // style: `fill: ${color}`,
           // class: "playable outline",
           class: "playable",
@@ -84,32 +91,30 @@ const updateView = (
 
       const element =
         document.getElementById(String(circle.id)) || createBodyView();
-      attr(element, { cy: circle.y });
+      attr(element, { cy: circle.cy });
     };
 
-    // Handle hit circles
-    state.hitCircles.forEach((circle) => {
+    // Handle clicked circles
+    s.clickedCircles.forEach((circle) => {
       const element = document.getElementById(String(circle.id));
       if (element) {
         svg.removeChild(element);
-        // console.log("remove", performance.now());
-        playNote(samples)(circle.note);
+        playNote(samples, circle.note);
       }
     });
 
     // Update playable circles
-    state.playableCircles.forEach((circle) => {
-      // console.log("playable", performance.now());
+    s.hitCircles.forEach((circle) => {
       return updateBodyView(svg)(circle);
     });
 
     // Play notes for background circles
-    state.backgroundCircles
-      .filter((circle) => circle.duration === Constants.TRAVEL_MS)
-      .forEach((circle) => playNote(samples)(circle.note));
+    s.backgroundCircles
+      .filter((circle) => circle.timePassed === Constants.TRAVEL_MS)
+      .forEach((circle) => playNote(samples, circle.note));
 
     // Remove exited circles
-    state.exit
+    s.exit
       .map((circle) => document.getElementById(String(circle.id)))
       .filter(isNotNullOrUndefined)
       .forEach((circle) => {
@@ -121,10 +126,10 @@ const updateView = (
       });
 
     // Update text fields
-    highScoreText.textContent = String(state.highscore);
-    scoreText.textContent = String(Math.round(state.score));
-    comboText.textContent = String(state.combo);
-    multiplier.textContent = `${state.multiplier}x`;
+    highScoreText.textContent = String(s.highscore);
+    scoreText.textContent = String(Math.round(s.score));
+    comboText.textContent = String(s.combo);
+    multiplier.textContent = `${s.multiplier}x`;
 
     // Clear circles
     const clearCircles = () => {
@@ -137,17 +142,17 @@ const updateView = (
     // Handle game over and restart
     hide(gameover);
 
-    if (state.restart) {
+    if (s.restart) {
       clearCircles();
-      onFinish(true, { ...IState, highscore: state.highscore });
+      onFinish(true, { ...initialState, highscore: s.highscore });
     }
 
-    if (state.gameEnd) {
+    if (s.gameEnd) {
       show(gameover);
       clearCircles();
       onFinish(false, {
-        ...IState,
-        highscore: Math.max(state.score, state.highscore),
+        ...initialState,
+        highscore: Math.max(s.score, s.highscore),
       });
     }
   };
