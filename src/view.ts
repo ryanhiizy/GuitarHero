@@ -1,14 +1,14 @@
 export { updateView };
 
 import * as Tone from "tone";
-import { Circle, Constants, NoteConstants, State, Viewport } from "./types";
-import { attr, isNotNullOrUndefined, playNote } from "./util";
+import { Circle, Constants, NoteConstants, State, Tail, Viewport } from "./types";
+import { attr, clearCircles, isNotNullOrUndefined, playNote, stopNote } from "./util";
 import { initialState } from "./state";
 
 /** Rendering (side effects) */
 
 const updateView = (samples: { [key: string]: Tone.Sampler }, onFinish: (restart: boolean, state: State) => void) => {
-  return (state: State): void => {
+  return (s: State): void => {
     /**
      * Displays a SVG element on the canvas. Brings to foreground.
      * @param elem SVG element to display
@@ -41,95 +41,129 @@ const updateView = (samples: { [key: string]: Tone.Sampler }, onFinish: (restart
     svg.setAttribute("height", `${Viewport.CANVAS_HEIGHT}`);
     svg.setAttribute("width", `${Viewport.CANVAS_WIDTH}`);
 
-    // Show or hide paused state
-    if (state.paused) {
+    // Update body view
+    const updateCircleBodyView = (rootSVG: HTMLElement) => (c: Circle) => {
+      const color = Constants.NOTE_COLORS[c.column];
+      function createCircleSVG() {
+        const circle = document.createElementNS(rootSVG.namespaceURI, "circle");
+        attr(circle, {
+          id: c.id,
+          r: NoteConstants.RADIUS,
+          cx: `${c.x}%`,
+          class: "playable outline",
+          fill: color,
+          // fill: `url(#${color}Gradient)`,
+          // "stroke-width": "2",
+        });
+        rootSVG.appendChild(circle);
+        return circle;
+      }
+
+      const circle = document.getElementById(String(c.id)) || createCircleSVG();
+      attr(circle, {
+        cy: c.y,
+      });
+    };
+
+    const updateTailBodyView = (rootSVG: HTMLElement) => (t: Tail) => {
+      const color = Constants.NOTE_COLORS[t.column];
+      function createTailSVG() {
+        const tail = document.createElementNS(rootSVG.namespaceURI, "line");
+        attr(tail, {
+          id: t.id,
+          x1: `${t.x1}%`,
+          y1: `${t.y2}%`,
+          x2: `${t.x2}%`,
+          y2: `${t.y2}%`,
+          class: "playable",
+          stroke: color,
+          "stroke-width": "12",
+        });
+        rootSVG.appendChild(tail);
+        return tail;
+      }
+
+      const tail = document.getElementById(t.id) || createTailSVG();
+      attr(tail, {
+        y1: t.y1,
+        y2: t.y2,
+        stroke: t.isMissed ? "grey" : color,
+      });
+    };
+
+    s.hitCircles.forEach(updateCircleBodyView(svg));
+    s.holdCircles.forEach(updateCircleBodyView(svg));
+    s.clickedHoldCircles.forEach(updateCircleBodyView(svg));
+    s.bgCircles.filter((circle) => circle.time === Constants.TRAVEL_MS).forEach(playNote(samples));
+    s.tails.forEach(updateTailBodyView(svg));
+
+    s.clickedHitCircles.forEach((circle) => {
+      const element = document.getElementById(String(circle.id));
+      if (element) {
+        svg.removeChild(element);
+        playNote(samples)(circle);
+      }
+    });
+
+    s.clickedHoldCircles.filter((circle) => circle.time === 0).forEach(playNote(samples));
+
+    s.clickedHoldCircles
+      .filter((circle) => circle.time === circle.duration)
+      .forEach((circle) => {
+        const circleSVG = document.getElementById(String(circle.id));
+        const lineSVG = document.getElementById(`${circle.id}t`);
+        if (circleSVG && lineSVG) {
+          svg.removeChild(circleSVG);
+          svg.removeChild(lineSVG);
+          stopNote(circle);
+        }
+      });
+
+    // can use the null thing
+    s.exitTails.forEach((tail) => {
+      const tailSVG = document.getElementById(tail.id);
+      if (tailSVG) {
+        svg.removeChild(tailSVG);
+      }
+    });
+
+    s.exit.forEach((circle) => {
+      const circleSVG = document.getElementById(String(circle.id));
+      if (circleSVG) {
+        svg.removeChild(circleSVG);
+        if (circle.userPlayed) {
+          stopNote(circle);
+        }
+      }
+    });
+
+    // Update text fields
+    highScoreText.textContent = String(s.highscore);
+    scoreText.textContent = String(Math.round(s.score));
+    comboText.textContent = String(s.combo);
+    multiplier.textContent = `${s.multiplier}x`;
+
+    if (s.paused) {
       show(paused);
+      s.clickedHoldCircles.forEach(stopNote);
     } else {
       hide(paused);
     }
 
-    // Update body view
-    const updateBodyView = (rootSVG: HTMLElement) => (circle: Circle) => {
-      function createBodyView() {
-        const element = document.createElementNS(rootSVG.namespaceURI, "circle");
-        const color = Constants.NOTE_COLORS[circle.column];
-        attr(element, {
-          id: circle.id,
-          r: NoteConstants.RADIUS,
-          cx: `${circle.x}%`,
-          // style: `fill: ${color}`,
-          // class: "playable outline",
-          class: "playable",
-          fill: `url(#${color}Gradient)`,
-          stroke: "transparent",
-          "stroke-width": "2",
-        });
-        rootSVG.appendChild(element);
-        return element;
-      }
-
-      const element = document.getElementById(String(circle.id)) || createBodyView();
-      attr(element, { cy: circle.y });
-    };
-
-    // Handle hit circles
-    state.hitCircles.forEach((circle) => {
-      const element = document.getElementById(String(circle.id));
-      if (element) {
-        svg.removeChild(element);
-        // console.log("remove", performance.now());
-        playNote(samples, circle.note);
-      }
-    });
-
-    // Update playable circles
-    state.playableCircles.forEach(updateBodyView(svg));
-
-    // Play notes for background circles
-    state.backgroundCircles
-      .filter((circle) => circle.duration === Constants.TRAVEL_MS)
-      .forEach((circle) => playNote(samples, circle.note));
-
-    // Remove exited circles
-    state.exit
-      .map((circle) => document.getElementById(String(circle.id)))
-      .filter(isNotNullOrUndefined)
-      .forEach((circle) => {
-        try {
-          svg.removeChild(circle);
-        } catch (e) {
-          console.log("Already removed: " + circle.id);
-        }
-      });
-
-    // Update text fields
-    highScoreText.textContent = String(state.highscore);
-    scoreText.textContent = String(Math.round(state.score));
-    comboText.textContent = String(state.combo);
-    multiplier.textContent = `${state.multiplier}x`;
-
-    // Clear circles
-    const clearCircles = () => {
-      const circles = document.querySelectorAll(".playable");
-      circles.forEach((circle) => {
-        circle.remove();
-      });
-    };
-
     // Handle game over and restart
     hide(gameover);
 
-    if (state.restart) {
+    if (s.restart) {
       clearCircles();
-      onFinish(true, { ...initialState, highscore: state.highscore });
+      onFinish(true, { ...initialState, highscore: s.highscore });
     }
 
-    if (state.gameEnd) {
+    if (s.gameEnd) {
       show(gameover);
       clearCircles();
       onFinish(false, {
         ...initialState,
-        highscore: Math.max(state.score, state.highscore),
+        highscore: Math.max(s.score, s.highscore),
       });
     }
   };

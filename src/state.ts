@@ -1,7 +1,7 @@
-export { initialState, Tick, reduceState, CreateCircle, ClickCircle, Restart, GameEnd, Pause };
+export { initialState, Tick, reduceState, CreateCircle, ClickCircle, Restart, GameEnd, Pause, KeyUp };
 
-import { not } from "./util";
-import { Action, State, Circle, Note, ClickKey, Constants } from "./types";
+import { createTail, not } from "./util";
+import { Action, State, Circle, Note, ClickKey, Constants, Tail } from "./types";
 
 const initialState: State = {
   score: 0,
@@ -10,11 +10,19 @@ const initialState: State = {
   combo: 0,
   comboCount: 0,
   time: 0,
+
+  tails: [],
   circles: [],
-  playableCircles: [],
-  backgroundCircles: [],
-  exit: [],
   hitCircles: [],
+  holdCircles: [],
+  bgCircles: [],
+
+  clickedHitCircles: [],
+  clickedHoldCircles: [],
+
+  exit: [],
+  exitTails: [],
+
   paused: false,
   restart: false,
   gameEnd: false,
@@ -22,52 +30,111 @@ const initialState: State = {
 
 class Tick implements Action {
   apply(s: State): State {
-    const { circles, combo, multiplier, time, score, highscore } = s;
+    const { circles, clickedHoldCircles, tails, combo, multiplier, time } = s;
 
-    const playableCircles = circles.filter(this.isPlayable);
-    const backgroundCircles = circles.filter(this.isBackground);
+    console.log(s);
 
-    const expiredCircles = playableCircles.filter(this.isExpired);
-    const activeCircles = playableCircles.filter(not(this.isExpired));
+    const hitCircles = circles.filter(this.isHit);
+    const holdCircles = circles.filter(this.isHold);
+    const bgCircles = circles.filter(this.isBackground);
 
-    const updatedActiveCircles = activeCircles.map(this.incrementY);
-    const updatedBackgroundCircles = backgroundCircles.map(this.incrementDuration);
+    const expiredHitCircles = hitCircles.filter(this.isHitExpired);
+    const activeHitCircles = hitCircles.filter(not(this.isHitExpired));
+    const updatedHitCircles = activeHitCircles.map(this.incrementHitY);
+
+    const expiredHoldCircles = holdCircles.filter(this.isHoldExpired);
+    const activeHoldCircles = holdCircles.filter(not(this.isHoldExpired));
+    const movedHoldCircles = activeHoldCircles.map(this.incrementHoldY);
+    const updatedHoldCircles = movedHoldCircles.map(this.incrementHoldTime);
+
+    const expiredTails = tails.filter(this.isTailExpired);
+    const activeTails = tails.filter(not(this.isTailExpired));
+    const movedTails = activeTails.map(this.incrementTailY);
+    const updatedTails = movedTails.map(this.updateTail(updatedHoldCircles));
+
+    const updatedBgCircles = bgCircles.map(this.incrementBgTime);
+
+    const updatedClickedHoldCircles = clickedHoldCircles.map(this.incrementHoldTime);
+    const filteredClickedHoldCircles = updatedClickedHoldCircles.filter(not(this.isClickedHoldExpired));
+    const movedClickedHoldCircles = filteredClickedHoldCircles.map(this.incrementHoldY);
+
+    const newCircles = [...updatedHitCircles, ...updatedHoldCircles, ...updatedBgCircles];
+    const expiredCircles = [...expiredHitCircles, ...expiredHoldCircles];
 
     const newCombo = expiredCircles.length === 0 ? combo : 0;
     const newMultiplier = newCombo === 0 ? 1 : multiplier;
-    const newHighscore = Math.max(score, highscore);
     const newTime = time + Constants.TICK_RATE_MS;
 
     return {
       ...s,
-      highscore: newHighscore,
       combo: newCombo,
       multiplier: newMultiplier,
       time: newTime,
-      circles: [...updatedActiveCircles, ...updatedBackgroundCircles],
-      playableCircles: activeCircles,
-      backgroundCircles: updatedBackgroundCircles,
-      hitCircles: [],
+      circles: newCircles,
+      hitCircles: updatedHitCircles,
+      holdCircles: updatedHoldCircles,
+      bgCircles: updatedBgCircles,
+      clickedHitCircles: [],
+      clickedHoldCircles: movedClickedHoldCircles,
+      tails: updatedTails,
       exit: expiredCircles,
+      exitTails: expiredTails,
       restart: false,
     };
   }
 
-  isPlayable = (circle: Circle) => circle.userPlayed;
+  updateTail =
+    (holdCircles: ReadonlyArray<Circle>) =>
+    (tail: Tail): Tail => {
+      const matchingCircle = holdCircles
+        .filter((circle) => circle.y === Constants.POINT_Y && circle.time > 0)
+        .find((circle) => tail.id === `${circle.id}t`);
+      return matchingCircle ? this.setMissed(tail) : tail;
+    };
 
-  isBackground = (circle: Circle) =>
-    !circle.userPlayed && circle.duration + Constants.TICK_RATE_MS <= Constants.TRAVEL_MS;
-
-  isExpired = (circle: Circle) => circle.y >= Constants.EXPIRED_Y;
-
-  incrementDuration = (circle: Circle): Circle => ({
-    ...circle,
-    duration: circle.duration + Constants.TICK_RATE_MS,
+  setMissed = (tail: Tail): Tail => ({
+    ...tail,
+    isMissed: true,
   });
 
-  incrementY = (circle: Circle): Circle => ({
+  isHit = (circle: Circle) => circle.userPlayed && !circle.isHoldCircle;
+
+  isHold = (circle: Circle) => circle.isHoldCircle;
+
+  isBackground = (circle: Circle) => !circle.userPlayed && circle.time + Constants.TICK_RATE_MS <= Constants.TRAVEL_MS;
+
+  isHitExpired = (circle: Circle) => circle.y > Constants.EXPIRED_Y;
+
+  isHoldExpired = (circle: Circle) => circle.y === Constants.POINT_Y && circle.time >= circle.duration;
+
+  isClickedHoldExpired = (circle: Circle) => circle.time > circle.duration;
+
+  isTailExpired = (tail: Tail) => tail.y1 >= Constants.POINT_Y;
+
+  incrementBgTime = (circle: Circle): Circle => ({
+    ...circle,
+    time: circle.time + Constants.TICK_RATE_MS,
+  });
+
+  incrementHoldTime = (circle: Circle): Circle => ({
+    ...circle,
+    time: circle.y === Constants.POINT_Y ? circle.time + Constants.TICK_RATE_MS : circle.time,
+  });
+
+  incrementHitY = (circle: Circle): Circle => ({
     ...circle,
     y: circle.y + Constants.TRAVEL_Y_PER_TICK,
+  });
+
+  incrementHoldY = (circle: Circle): Circle => ({
+    ...circle,
+    y: Math.min(circle.y + Constants.TRAVEL_Y_PER_TICK, Constants.POINT_Y),
+  });
+
+  incrementTailY = (tail: Tail): Tail => ({
+    ...tail,
+    y1: tail.y1 + Constants.TRAVEL_Y_PER_TICK,
+    y2: Math.min(tail.y2 + Constants.TRAVEL_Y_PER_TICK, Constants.POINT_Y),
   });
 }
 
@@ -75,9 +142,10 @@ class ClickCircle implements Action {
   constructor(public readonly key: ClickKey) {}
 
   apply(s: State): State {
-    const { playableCircles, combo, comboCount, multiplier, score, backgroundCircles, hitCircles } = s;
+    const { combo, comboCount, multiplier, score, circles, bgCircles, clickedHitCircles, clickedHoldCircles } = s;
 
     const column = Constants.COLUMN_KEYS.indexOf(this.key);
+    const playableCircles = circles.filter(this.isPlayable);
     const closeCircles = playableCircles.filter(this.isClose(column));
 
     if (closeCircles.length === 0) {
@@ -86,7 +154,9 @@ class ClickCircle implements Action {
 
     const closestCircle = this.findClosestCircle(closeCircles);
     const filteredCircles = playableCircles.filter(not(this.isClosestCircle(closestCircle)));
-    const updateClosestCircle = this.setHit(closestCircle);
+
+    const newHitCircles = filteredCircles.filter(not(this.isHold));
+    const newHoldCircles = filteredCircles.filter(this.isHold);
 
     const newCombo = combo + 1;
     const newComboCount = Math.floor(newCombo / 10) * 10;
@@ -96,25 +166,26 @@ class ClickCircle implements Action {
 
     return {
       ...s,
-      multiplier: formatMultiplier,
       score: newScore,
+      multiplier: formatMultiplier,
       combo: newCombo,
       comboCount: newComboCount,
-      circles: [...filteredCircles, ...backgroundCircles],
-      playableCircles: filteredCircles,
-      hitCircles: [...hitCircles, updateClosestCircle],
+      circles: [...filteredCircles, ...bgCircles],
+      hitCircles: newHitCircles,
+      holdCircles: newHoldCircles,
+      clickedHitCircles: !this.isHold(closestCircle) ? [...clickedHitCircles, closestCircle] : clickedHitCircles,
+      clickedHoldCircles: this.isHold(closestCircle) ? [...clickedHoldCircles, closestCircle] : clickedHoldCircles,
     };
   }
 
-  setHit = (circle: Circle): Circle => ({
-    ...circle,
-    isHit: true,
-  });
+  isPlayable = (circle: Circle) => circle.userPlayed;
+
+  isHold = (circle: Circle) => circle.isHoldCircle;
 
   isClosestCircle = (closest: Circle) => (circle: Circle) => circle === closest;
 
   isClose = (column: number) => (circle: Circle) =>
-    circle.column === column && Math.abs(circle.y - Constants.POINT_Y) <= Constants.CLICK_RANGE_Y;
+    circle.userPlayed && circle.column === column && Math.abs(circle.y - Constants.POINT_Y) <= Constants.CLICK_RANGE_Y;
 
   findClosestCircle = (circles: ReadonlyArray<Circle>): Circle =>
     circles.reduce((closest, circle) => {
@@ -131,13 +202,55 @@ class ClickCircle implements Action {
   };
 }
 
+class KeyUp implements Action {
+  constructor(public readonly key: ClickKey) {}
+
+  apply(s: State): State {
+    const { clickedHoldCircles, circles } = s;
+
+    const column = Constants.COLUMN_KEYS.indexOf(this.key);
+    const closeCircles = clickedHoldCircles.filter(this.isClose(column));
+
+    if (closeCircles.length === 0) {
+      return s;
+    }
+
+    const closestCircle = this.findClosestCircle(closeCircles);
+    const filteredCircles = clickedHoldCircles.filter(not(this.isClosestCircle(closestCircle)));
+
+    return {
+      ...s,
+      clickedHoldCircles: filteredCircles,
+      circles: [...circles, closestCircle],
+    };
+  }
+
+  isClosestCircle = (closest: Circle) => (circle: Circle) => circle === closest;
+
+  isClose = (column: number) => (circle: Circle) =>
+    circle.column === column && Math.abs(circle.y - Constants.POINT_Y) <= Constants.CLICK_RANGE_Y;
+
+  findClosestCircle = (circles: ReadonlyArray<Circle>): Circle =>
+    circles.reduce((closest, circle) => {
+      const closestDistance = Math.abs(closest.y - Constants.POINT_Y);
+      const distance = Math.abs(circle.y - Constants.POINT_Y);
+      return distance < closestDistance ? circle : closest;
+    });
+}
+
 class CreateCircle implements Action {
   constructor(public readonly circle: Circle) {}
 
   apply(s: State): State {
+    const { circles, tails } = s;
+
+    const newCircles = [...circles, this.circle];
+    const newTails = this.circle.duration >= Constants.MIN_HOLD_DURATION ? [...tails, createTail(this.circle)] : tails;
+
     return {
       ...s,
-      circles: [...s.circles, this.circle],
+      circles: newCircles,
+      tails: newTails,
     };
   }
 }

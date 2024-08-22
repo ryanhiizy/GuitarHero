@@ -1,11 +1,13 @@
 export { Constants, Viewport, NoteConstants };
-export type { Note, ClickKey, ExtraKey, Event, State, Circle, Action };
+export type { Note, ClickKey, ExtraKey, Event, State, Circle, Action, Tail };
+
+import * as Tone from "tone";
 
 /** Constants */
 
 const Constants = {
   TICK_RATE_MS: 5,
-  SONG_NAME: "SleepingBeauty",
+  SONG_NAME: "bus",
   MAX_MIDI_VELOCITY: 127,
   NUMBER_OF_COLUMNS: 4,
   COLUMN_WIDTH: 20,
@@ -20,6 +22,7 @@ const Constants = {
   SCORE_PER_HIT: 10,
   MULTIPLIER_INCREMENT: 0.2,
   COMBO_FOR_MULTIPLIER: 10,
+  MIN_HOLD_DURATION: 1000,
 } as const;
 
 const Viewport = {
@@ -49,11 +52,19 @@ type State = Readonly<{
   combo: number;
   comboCount: number;
   time: number;
+
+  tails: ReadonlyArray<Tail>;
   circles: ReadonlyArray<Circle>;
-  playableCircles: ReadonlyArray<Circle>;
-  backgroundCircles: ReadonlyArray<Circle>;
-  exit: ReadonlyArray<Circle>;
   hitCircles: ReadonlyArray<Circle>;
+  holdCircles: ReadonlyArray<Circle>;
+  bgCircles: ReadonlyArray<Circle>;
+
+  clickedHitCircles: ReadonlyArray<Circle>;
+  clickedHoldCircles: ReadonlyArray<Circle>;
+
+  exit: ReadonlyArray<Circle>;
+  exitTails: ReadonlyArray<Tail>;
+
   paused: boolean;
   restart: boolean;
   gameEnd: boolean;
@@ -65,9 +76,21 @@ type Circle = Readonly<{
   y: number;
   userPlayed: boolean;
   column: number;
+  time: number;
   duration: number;
-  isHit: boolean;
+  isHoldCircle: boolean;
+  sampler: Tone.Sampler;
   note: Note;
+}>;
+
+type Tail = Readonly<{
+  id: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  column: number;
+  isMissed: boolean;
 }>;
 
 type Note = Readonly<{
