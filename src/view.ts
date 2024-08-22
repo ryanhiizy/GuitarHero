@@ -2,7 +2,7 @@ export { updateView };
 
 import * as Tone from "tone";
 import { Circle, Constants, NoteConstants, State, Tail, Viewport } from "./types";
-import { attr, clearCircles, isNotNullOrUndefined, playNote, stopNote } from "./util";
+import { attr, clearCircles, isNotNullOrUndefined, playNote, startNote, stopNote } from "./util";
 import { initialState } from "./state";
 
 /** Rendering (side effects) */
@@ -66,7 +66,7 @@ const updateView = (samples: { [key: string]: Tone.Sampler }, onFinish: (restart
     };
 
     const updateTailBodyView = (rootSVG: HTMLElement) => (t: Tail) => {
-      const color = Constants.NOTE_COLORS[t.column];
+      const color = Constants.NOTE_COLORS[t.circle.column];
       function createTailSVG() {
         const tail = document.createElementNS(rootSVG.namespaceURI, "line");
         attr(tail, {
@@ -77,7 +77,9 @@ const updateView = (samples: { [key: string]: Tone.Sampler }, onFinish: (restart
           y2: `${t.y2}%`,
           class: "playable",
           stroke: color,
+          "stroke-opacity": "0.25",
           "stroke-width": "12",
+          "stroke-linecap": "round",
         });
         rootSVG.appendChild(tail);
         return tail;
@@ -87,14 +89,12 @@ const updateView = (samples: { [key: string]: Tone.Sampler }, onFinish: (restart
       attr(tail, {
         y1: t.y1,
         y2: t.y2,
-        "stroke-opacity": t.isMissed ? "0.25" : "1",
+        "stroke-opacity": t.y2 === Constants.POINT_Y ? "1" : "0.25",
       });
     };
 
     s.hitCircles.forEach(updateCircleBodyView(svg));
     s.holdCircles.forEach(updateCircleBodyView(svg));
-    s.holdCircles.forEach(stopNote);
-    s.clickedHoldCircles.forEach(updateCircleBodyView(svg));
     s.bgCircles.filter((circle) => circle.time === Constants.TRAVEL_MS).forEach(playNote(samples));
     s.tails.forEach(updateTailBodyView(svg));
 
@@ -106,25 +106,22 @@ const updateView = (samples: { [key: string]: Tone.Sampler }, onFinish: (restart
       }
     });
 
-    s.clickedHoldCircles.filter((circle) => circle.time === 0).forEach(playNote(samples));
+    s.clickedHoldCircles.forEach((circle) => {
+      const element = document.getElementById(String(circle.id));
+      if (element) {
+        svg.removeChild(element);
+        startNote(circle);
+      }
+    });
 
-    s.clickedHoldCircles
-      .filter((circle) => circle.time === circle.duration)
-      .forEach((circle) => {
-        const circleSVG = document.getElementById(String(circle.id));
-        const lineSVG = document.getElementById(`${circle.id}t`);
-        if (circleSVG && lineSVG) {
-          svg.removeChild(circleSVG);
-          svg.removeChild(lineSVG);
-          stopNote(circle);
-        }
-      });
+    s.tails.filter((tail) => tail.isReleasedEarly).forEach((tail) => stopNote(tail.circle));
 
     // can use the null thing
     s.exitTails.forEach((tail) => {
       const tailSVG = document.getElementById(tail.id);
       if (tailSVG) {
         svg.removeChild(tailSVG);
+        stopNote(tail.circle);
       }
     });
 
@@ -146,7 +143,7 @@ const updateView = (samples: { [key: string]: Tone.Sampler }, onFinish: (restart
 
     if (s.paused) {
       show(paused);
-      s.clickedHoldCircles.forEach(stopNote);
+      s.tails.filter((tail) => tail.isReleasedEarly).forEach((tail) => stopNote(tail.circle));
     } else {
       hide(paused);
     }
@@ -156,7 +153,7 @@ const updateView = (samples: { [key: string]: Tone.Sampler }, onFinish: (restart
 
     if (s.restart) {
       clearCircles();
-      s.clickedHoldCircles.forEach(stopNote);
+      s.tails.filter((tail) => tail.isReleasedEarly).forEach((tail) => stopNote(tail.circle));
       onFinish(true, { ...initialState, highscore: s.highscore });
     }
 
