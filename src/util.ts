@@ -10,6 +10,7 @@ export {
   getMinPitch,
   getMaxPitch,
   createCircle,
+  startNote,
   stopNote,
   clearCircles,
   createTail,
@@ -40,11 +41,10 @@ const createCircle = (
   const duration = (note.end - note.start) * Constants.S_TO_MS;
   const isHoldCircle = note.userPlayed && duration >= Constants.MIN_HOLD_DURATION;
   const x = (column + 1) * Constants.COLUMN_WIDTH;
-
   const sampler = samples[note.instrument_name];
 
   return {
-    id: id,
+    id,
     x: x,
     y: 0,
     userPlayed: note.userPlayed,
@@ -52,8 +52,9 @@ const createCircle = (
     time: 0,
     duration: duration,
     isHoldCircle: isHoldCircle,
-    sampler: sampler,
+    isClicked: false,
     note,
+    sampler,
   };
 };
 
@@ -63,8 +64,8 @@ const createTail = (circle: Circle): Tail => ({
   y1: circle.y - circle.duration * (Constants.TRAVEL_Y_PER_TICK / Constants.TICK_RATE_MS),
   x2: circle.x,
   y2: circle.y,
-  column: circle.column,
-  isMissed: false,
+  circle,
+  isReleasedEarly: false,
 });
 
 const formatLine = (line: string): Note => {
@@ -87,16 +88,20 @@ const playNote = (samples: { [key: string]: Tone.Sampler }) => (circle: Circle) 
   const note = circle.note;
   const normalizedVelocity = Math.min(Math.max(note.velocity, 0), 1) / Constants.MAX_MIDI_VELOCITY;
 
-  if (circle.isHoldCircle) {
-    circle.sampler.triggerAttack(Tone.Frequency(note.pitch, "midi").toNote(), undefined, normalizedVelocity);
-  } else {
-    samples[note.instrument_name].triggerAttackRelease(
-      Tone.Frequency(note.pitch, "midi").toNote(),
-      note.end - note.start,
-      undefined,
-      normalizedVelocity,
-    );
-  }
+  samples[note.instrument_name].triggerAttackRelease(
+    Tone.Frequency(note.pitch, "midi").toNote(),
+    note.end - note.start,
+    undefined,
+    normalizedVelocity,
+  );
+};
+
+const startNote = (circle: Circle) => {
+  console.log("startNote", circle);
+  const note = circle.note;
+  const normalizedVelocity = Math.min(Math.max(note.velocity, 0), 1) / Constants.MAX_MIDI_VELOCITY;
+
+  return circle.sampler.triggerAttack(Tone.Frequency(note.pitch, "midi").toNote(), undefined, normalizedVelocity);
 };
 
 const stopNote = (circle: Circle) =>
@@ -114,22 +119,6 @@ const clearCircles = () => {
     circle.remove();
   });
 };
-
-// const getNonOverlappingColumn =
-//   (arr: ReadonlyArray<Circle | undefined>) =>
-//   (
-//     circle: Circle,
-//   ): Readonly<{
-//     circle: Circle;
-//     column: number;
-//   }> => {
-//     const column = circle.column;
-//     if (arr[column] === undefined) {
-//       return { circle, column };
-//     }
-//     const nextColumn = !column ? Constants.NUMBER_OF_COLUMNS : column - 1;
-//     return getNonOverlappingColumn(arr)(circle);
-//   };
 
 const getGroupedNotesHelper = (csv: ReadonlyArray<Note>): Readonly<{ [key: string]: ReadonlyArray<Note> }> =>
   csv.reduce(
