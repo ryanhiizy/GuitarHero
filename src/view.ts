@@ -87,12 +87,13 @@ const updateView = (samples: { [key: string]: Tone.Sampler }, onFinish: (restart
       attr(tail, {
         y1: t.y1,
         y2: t.y2,
-        stroke: t.isMissed ? "grey" : color,
+        "stroke-opacity": t.isMissed ? "0.25" : "1",
       });
     };
 
     s.hitCircles.forEach(updateCircleBodyView(svg));
     s.holdCircles.forEach(updateCircleBodyView(svg));
+    s.holdCircles.forEach(stopNote);
     s.clickedHoldCircles.forEach(updateCircleBodyView(svg));
     s.bgCircles.filter((circle) => circle.time === Constants.TRAVEL_MS).forEach(playNote(samples));
     s.tails.forEach(updateTailBodyView(svg));
@@ -155,6 +156,7 @@ const updateView = (samples: { [key: string]: Tone.Sampler }, onFinish: (restart
 
     if (s.restart) {
       clearCircles();
+      s.clickedHoldCircles.forEach(stopNote);
       onFinish(true, { ...initialState, highscore: s.highscore });
     }
 

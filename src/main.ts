@@ -18,7 +18,7 @@ import { updateView } from "./view";
 import { SampleLibrary } from "./tonejs-instruments";
 import { Constants, ClickKey, ExtraKey, Event, State, Action, Note } from "./types";
 import { parseCSV, getGroupedNotes, getMinPitch, getMaxPitch, createCircle } from "./util";
-import { map, filter, scan, mergeMap, delay, concatMap, delayWhen, concatWith, tap } from "rxjs/operators";
+import { map, filter, scan, mergeMap, delay, concatMap, delayWhen, concatWith } from "rxjs/operators";
 import { BehaviorSubject, from, fromEvent, interval, merge, Observable, of, Subscription } from "rxjs";
 import { initialState, Tick, reduceState, ClickCircle, Restart, GameEnd, Pause, CreateCircle, KeyUp } from "./state";
 

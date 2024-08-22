@@ -38,7 +38,7 @@ const createCircle = (
   const id = getID(note);
   const column = getColumn(note.pitch, minPitch, maxPitch);
   const duration = (note.end - note.start) * Constants.S_TO_MS;
-  const isHoldCircle = duration >= Constants.MIN_HOLD_DURATION;
+  const isHoldCircle = note.userPlayed && duration >= Constants.MIN_HOLD_DURATION;
   const x = (column + 1) * Constants.COLUMN_WIDTH;
 
   const sampler = samples[note.instrument_name];

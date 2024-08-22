@@ -32,8 +32,6 @@ class Tick implements Action {
   apply(s: State): State {
     const { circles, clickedHoldCircles, tails, combo, multiplier, time } = s;
 
-    console.log(s);
-
     const hitCircles = circles.filter(this.isHit);
     const holdCircles = circles.filter(this.isHold);
     const bgCircles = circles.filter(this.isBackground);
@@ -64,6 +62,9 @@ class Tick implements Action {
     const newCombo = expiredCircles.length === 0 ? combo : 0;
     const newMultiplier = newCombo === 0 ? 1 : multiplier;
     const newTime = time + Constants.TICK_RATE_MS;
+
+    console.log(time);
+    console.log("holdCircles", holdCircles);
 
     return {
       ...s,
@@ -164,6 +165,8 @@ class ClickCircle implements Action {
     const formatMultiplier = parseFloat(newMultiplier.toFixed(1));
     const newScore = score + Constants.SCORE_PER_HIT * multiplier;
 
+    console.log("click", newHoldCircles);
+
     return {
       ...s,
       score: newScore,
@@ -245,7 +248,10 @@ class CreateCircle implements Action {
     const { circles, tails } = s;
 
     const newCircles = [...circles, this.circle];
-    const newTails = this.circle.duration >= Constants.MIN_HOLD_DURATION ? [...tails, createTail(this.circle)] : tails;
+    const newTails =
+      this.circle.userPlayed && this.circle.duration >= Constants.MIN_HOLD_DURATION
+        ? [...tails, createTail(this.circle)]
+        : tails;
 
     return {
       ...s,
