@@ -7,7 +7,7 @@ import * as Tone from "tone";
 
 const Constants = {
   TICK_RATE_MS: 5,
-  SONG_NAME: "RockinRobin",
+  SONG_NAME: "SleepingBeauty",
   MAX_MIDI_VELOCITY: 127,
   NUMBER_OF_COLUMNS: 4,
   COLUMN_WIDTH: 20,
@@ -79,8 +79,9 @@ type Circle = Readonly<{
   time: number;
   duration: number;
   isHoldCircle: boolean;
-  sampler: Tone.Sampler;
+  isClicked: boolean;
   note: Note;
+  sampler: Tone.Sampler;
 }>;
 
 type Tail = Readonly<{
@@ -89,8 +90,8 @@ type Tail = Readonly<{
   y1: number;
   x2: number;
   y2: number;
-  column: number;
-  isMissed: boolean;
+  circle: Circle;
+  isReleasedEarly: boolean;
 }>;
 
 type Note = Readonly<{
