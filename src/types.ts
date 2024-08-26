@@ -1,19 +1,5 @@
 export { Constants, Viewport, NoteConstants };
-export type {
-  Note,
-  ClickKey,
-  ExtraKey,
-  Event,
-  State,
-  ICircle,
-  IPlayableCircle,
-  PlayableCircleType,
-  IHitCircle,
-  IHoldCircle,
-  IBackgroundCircle,
-  Action,
-  ITail,
-};
+export type { Note, ClickKey, ExtraKey, Event, State, ICircle, IHitCircle, IBackgroundCircle, Action, ITail };
 
 import * as Tone from "tone";
 
@@ -21,7 +7,7 @@ import * as Tone from "tone";
 
 const Constants = {
   TICK_RATE_MS: 5,
-  SONG_NAME: "past",
+  SONG_NAME: "RockinRobin",
   MAX_MIDI_VELOCITY: 127,
   NUMBER_OF_COLUMNS: 4,
   COLUMN_WIDTH: 20,
@@ -36,6 +22,7 @@ const Constants = {
   SCORE_PER_HIT: 10,
   MULTIPLIER_INCREMENT: 0.2,
   COMBO_FOR_MULTIPLIER: 10,
+  MIN_HOLD_DURATION: 1000,
 } as const;
 
 const Viewport = {
@@ -59,8 +46,6 @@ type Event = "keydown" | "keyup" | "keypress";
 
 /** Types */
 
-type PlayableCircleType = IPlayableCircle<IHitCircle> | IPlayableCircle<IHoldCircle>;
-
 type State = Readonly<{
   score: number;
   multiplier: number;
@@ -70,10 +55,13 @@ type State = Readonly<{
 
   tails: ReadonlyArray<ITail>;
   circles: ReadonlyArray<ICircle>;
-  playableCircles: ReadonlyArray<PlayableCircleType>;
+  playableCircles: ReadonlyArray<IHitCircle>;
   bgCircles: ReadonlyArray<IBackgroundCircle>;
-  clickedCircles: ReadonlyArray<PlayableCircleType>;
-  exit: ReadonlyArray<PlayableCircleType>;
+
+  clickedCircles: ReadonlyArray<IHitCircle>;
+
+  exit: ReadonlyArray<IHitCircle>;
+  exitTails: ReadonlyArray<ITail>;
 
   paused: boolean;
   restart: boolean;
@@ -89,45 +77,44 @@ type Note = Readonly<{
   end: number;
 }>;
 
-interface ITail {
-  id: string;
-  x1: number;
-  y1: number;
-  x2: number;
-  y2: number;
-  circle: IHoldCircle;
-  isReleasedEarly: boolean;
-
-  updateBodyView(rootSVG: HTMLElement): void;
-}
-
-interface ICircle {
+interface ICircle extends Action, Tickable {
   id: number;
   note: Note;
+  sampler: Tone.Sampler;
 
-  tick(s: State): State;
-  playNote(samples: { [key: string]: Tone.Sampler }): void;
+  playNote(): void;
 }
 
-interface IPlayableCircle<T extends IPlayableCircle<T>> extends ICircle {
+interface IHitCircle extends ICircle {
   cx: number;
   cy: number;
   column: number;
   isClicked: boolean;
 
-  setClicked(isClicked: boolean): T;
+  setClicked(isClicked: boolean): IHitCircle;
   updateBodyView(rootSVG: HTMLElement): void;
-  incrementComboOnClick(): boolean;
 }
 
-interface IHitCircle extends IPlayableCircle<IHitCircle> {}
-interface IHoldCircle extends IPlayableCircle<IHoldCircle> {
-  duration: number;
-  sampler: Tone.Sampler;
+interface ITail extends Action, Tickable {
+  id: string;
+  x: number;
+  y1: number;
+  y2: number;
+  circle: IHitCircle;
+  isReleasedEarly: boolean;
+
+  stopNote(): void;
+  setUnclicked(): ITail;
+  setReleasedEarly(): ITail;
+  updateBodyView(rootSVG: HTMLElement): void;
 }
 
 interface IBackgroundCircle extends ICircle {
   timePassed: number;
+}
+
+interface Tickable {
+  tick(s: State): State;
 }
 
 /**

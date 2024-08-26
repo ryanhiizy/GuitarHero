@@ -1,26 +1,14 @@
-export { Circle, HitCircle, HoldCircle, BackgroundCircle };
+export { Circle, HitCircle, Tail, BackgroundCircle };
 
 import * as Tone from "tone";
-import {
-  Constants,
-  Note,
-  State,
-  ICircle,
-  IHitCircle,
-  IBackgroundCircle,
-  Action,
-  IHoldCircle,
-  NoteConstants,
-  PlayableCircleType,
-  IPlayableCircle,
-  ITail,
-} from "./types";
+import { Constants, Note, State, ICircle, IBackgroundCircle, Action, NoteConstants, IHitCircle, ITail } from "./types";
 import { attr } from "./util";
 
-abstract class Circle implements ICircle, Action {
+abstract class Circle implements ICircle {
   constructor(
     public readonly id: number,
     public readonly note: Note,
+    public readonly sampler: Tone.Sampler,
   ) {}
 
   apply(s: State): State {
@@ -30,11 +18,11 @@ abstract class Circle implements ICircle, Action {
     };
   }
 
-  playNote(samples: { [key: string]: Tone.Sampler }) {
+  playNote() {
     const note = this.note;
     const normalizedVelocity = Math.min(Math.max(note.velocity, 0), 1) / Constants.MAX_MIDI_VELOCITY;
 
-    samples[note.instrumentName].triggerAttackRelease(
+    this.sampler.triggerAttackRelease(
       Tone.Frequency(note.pitch, "midi").toNote(),
       note.end - note.start,
       undefined,
@@ -45,17 +33,18 @@ abstract class Circle implements ICircle, Action {
   abstract tick(s: State): State;
 }
 
-abstract class PlayableCircle<T extends IPlayableCircle<T>> extends Circle {
+class HitCircle extends Circle implements IHitCircle {
   public readonly cx: number;
 
   constructor(
     public readonly id: number,
     public readonly note: Note,
     public readonly column: number,
+    public readonly sampler: Tone.Sampler,
     public readonly cy: number = 0,
     public readonly isClicked: boolean = false,
   ) {
-    super(id, note);
+    super(id, note, sampler);
     this.cx = (column + 1) * Constants.COLUMN_WIDTH;
   }
 
@@ -72,10 +61,6 @@ abstract class PlayableCircle<T extends IPlayableCircle<T>> extends Circle {
       exit: newExit,
     };
   }
-
-  abstract moveCircle(): T;
-  abstract incrementComboOnClick(): boolean;
-  abstract setClicked(isClicked: boolean): T;
 
   updateBodyView(rootSVG: HTMLElement) {
     const color = Constants.NOTE_COLORS[this.column];
@@ -100,122 +85,102 @@ abstract class PlayableCircle<T extends IPlayableCircle<T>> extends Circle {
   isActive(): boolean {
     return this.cy <= Constants.EXPIRED_Y;
   }
-}
-
-class HitCircle extends PlayableCircle<IHitCircle> implements IHitCircle {
-  constructor(
-    public readonly id: number,
-    public readonly note: Note,
-    public readonly column: number,
-    public readonly cy: number = 0,
-    public readonly isClicked: boolean = false,
-  ) {
-    super(id, note, column);
-  }
-
-  incrementComboOnClick(): boolean {
-    return true;
-  }
 
   moveCircle(): IHitCircle {
-    return new HitCircle(this.id, this.note, this.column, this.cy + Constants.TRAVEL_Y_PER_TICK);
+    return new HitCircle(this.id, this.note, this.column, this.sampler, this.cy + Constants.TRAVEL_Y_PER_TICK);
   }
 
   setClicked(isClicked: boolean): IHitCircle {
-    return new HitCircle(this.id, this.note, this.column, this.cy, isClicked);
-  }
-}
-
-class HoldCircle extends PlayableCircle<IHoldCircle> implements IHoldCircle {
-  constructor(
-    public readonly id: number,
-    public readonly note: Note,
-    public readonly column: number,
-    public readonly duration: number,
-    public readonly sampler: Tone.Sampler,
-    public readonly cy: number = 0,
-    public readonly isClicked: boolean = false,
-  ) {
-    super(id, note, column, cy, isClicked);
-  }
-
-  incrementComboOnClick(): boolean {
-    return false;
-  }
-
-  playNote = (samples: { [key: string]: Tone.Sampler }) => (circle: ICircle) => {
-    const normalizedVelocity = Math.min(Math.max(this.note.velocity, 0), 1) / Constants.MAX_MIDI_VELOCITY;
-
-    samples[this.note.instrumentName].triggerAttack(
-      Tone.Frequency(this.note.pitch, "midi").toNote(),
-      undefined,
-      normalizedVelocity,
-    );
-  };
-
-  stopNote(samples: { [key: string]: Tone.Sampler }) {
-    samples[this.note.instrumentName].triggerRelease(Tone.Frequency(this.note.pitch, "midi").toNote());
-  }
-
-  moveCircle(): IHoldCircle {
-    return new HoldCircle(
-      this.id,
-      this.note,
-      this.column,
-      this.duration,
-      this.sampler,
-      this.cy + Constants.TRAVEL_Y_PER_TICK,
-    );
-  }
-
-  setClicked(isClicked: boolean): IHoldCircle {
-    return new HoldCircle(this.id, this.note, this.column, this.duration, this.sampler, this.cy, isClicked);
-  }
-
-  updateBodyView(rootSVG: HTMLElement): void {
-    super.updateBodyView(rootSVG);
-    this.tail.updateBodyView;
+    return new HitCircle(this.id, this.note, this.column, this.sampler, this.cy, isClicked);
   }
 }
 
 class Tail implements ITail {
   constructor(
     public readonly id: string,
-    public readonly x1: number,
+    public readonly x: number,
     public readonly y1: number,
-    public readonly x2: number,
     public readonly y2: number,
-    public readonly circle: IHoldCircle,
-    public readonly isReleasedEarly: boolean,
+    public readonly circle: IHitCircle,
+    public readonly isReleasedEarly: boolean = false,
   ) {}
 
-  updateBodyView = (rootSVG: HTMLElement) => (t: ITail) => {
-    const color = Constants.NOTE_COLORS[t.circle.column];
-    function createTailSVG() {
+  apply(s: State): State {
+    return {
+      ...s,
+      circles: [...s.circles, this.circle],
+      tails: [...s.tails, this],
+    };
+  }
+
+  tick(s: State): State {
+    const expiredTail = !this.isActive() ? this : null;
+    const moveActiveTail = this.isActive() ? this.moveTail() : null;
+
+    const newTails = moveActiveTail ? [moveActiveTail, ...s.tails] : s.tails.filter((tail) => tail !== this);
+    const newExitTails = expiredTail ? [...s.exitTails, expiredTail] : s.exitTails;
+
+    return {
+      ...s,
+      tails: newTails,
+      exitTails: newExitTails,
+    };
+  }
+
+  // IS THIS OKAY IF I ONLY CALL IT IN VIEW???
+  stopNote(): void {
+    this.circle.sampler.triggerRelease(Tone.Frequency(this.circle.note.pitch, "midi").toNote(), undefined);
+  }
+
+  isActive(): boolean {
+    return this.y1 < Constants.POINT_Y;
+  }
+
+  moveTail(): Tail {
+    const circle = this.circle;
+    const movedY1 = this.y1 + Constants.TRAVEL_Y_PER_TICK;
+    const newY1 = circle.isClicked && !this.isReleasedEarly ? Math.min(movedY1, Constants.POINT_Y) : movedY1;
+    const movedY2 = this.y2 + Constants.TRAVEL_Y_PER_TICK;
+    const newY2 = circle.isClicked && !this.isReleasedEarly ? Math.min(movedY2, Constants.POINT_Y) : movedY2;
+
+    return new Tail(this.id, this.x, newY1, newY2, circle, this.isReleasedEarly);
+  }
+
+  setReleasedEarly(): ITail {
+    return new Tail(this.id, this.x, this.y1, this.y2, this.circle, true);
+  }
+
+  setUnclicked(): ITail {
+    return new Tail(this.id, this.x, this.y1, this.y2, this.circle.setClicked(false), this.isReleasedEarly);
+  }
+
+  updateBodyView(rootSVG: HTMLElement) {
+    const color = Constants.NOTE_COLORS[this.circle.column];
+    const createTailSVG = () => {
       const tail = document.createElementNS(rootSVG.namespaceURI, "line");
       attr(tail, {
-        id: t.id,
-        x1: `${t.x1}%`,
-        y1: `${t.y2}%`,
-        x2: `${t.x2}%`,
-        y2: `${t.y2}%`,
+        id: this.id,
+        x1: `${this.x}%`,
+        y1: `${this.y1}%`,
+        x2: `${this.x}%`,
+        y2: `${this.y2}%`,
         class: "playable",
         stroke: color,
         "stroke-opacity": "0.25",
-        "stroke-width": "12",
+        "stroke-width": "15",
         "stroke-linecap": "round",
       });
       rootSVG.appendChild(tail);
       return tail;
-    }
+    };
 
-    const tail = document.getElementById(t.id) || createTailSVG();
+    const tail = document.getElementById(this.id) || createTailSVG();
     attr(tail, {
-      y1: t.y1,
-      y2: t.y2,
-      "stroke-opacity": t.y2 === Constants.POINT_Y ? "1" : "0.25",
+      y1: this.y1,
+      y2: this.y2,
+      "stroke-opacity": this.y2 === Constants.POINT_Y ? "1" : "0.25",
     });
-  };
+  }
 }
 
 ///////////////////////
@@ -238,9 +203,10 @@ class BackgroundCircle extends Circle implements IBackgroundCircle {
   constructor(
     public readonly id: number,
     public readonly note: Note,
+    public readonly sampler: Tone.Sampler,
     public readonly timePassed: number = 0,
   ) {
-    super(id, note);
+    super(id, note, sampler);
   }
 
   tick(s: State): State {
@@ -259,6 +225,6 @@ class BackgroundCircle extends Circle implements IBackgroundCircle {
   }
 
   tickCircle(): IBackgroundCircle {
-    return new BackgroundCircle(this.id, this.note, this.timePassed + Constants.TICK_RATE_MS);
+    return new BackgroundCircle(this.id, this.note, this.sampler, this.timePassed + Constants.TICK_RATE_MS);
   }
 }

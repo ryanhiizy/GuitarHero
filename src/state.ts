@@ -1,7 +1,8 @@
-export { initialState, Tick, reduceState, ClickCircle, Restart, GameEnd, Pause };
+export { initialState, Tick, reduceState, ClickCircle, Restart, GameEnd, Pause, ReleaseCircle };
 
-import { Action, State, ClickKey, Constants, ICircle, PlayableCircleType } from "./types";
-import { calculateMultiplier, calculateScore, not } from "./util";
+import { Tail } from "./circle";
+import { Action, State, ClickKey, Constants, ICircle, IHitCircle, ITail } from "./types";
+import { calculateMultiplier, not } from "./util";
 
 const initialState: State = {
   score: 0,
@@ -9,11 +10,17 @@ const initialState: State = {
   highscore: 0,
   combo: 0,
   time: 0,
+
+  tails: [],
   circles: [],
   playableCircles: [],
   bgCircles: [],
+
   clickedCircles: [],
+
   exit: [],
+  exitTails: [],
+
   paused: false,
   restart: false,
   gameEnd: false,
@@ -23,20 +30,23 @@ class Tick implements Action {
   apply(s: State): State {
     const clearState = {
       ...s,
+      tails: [],
       playableCircles: [],
       bgCircles: [],
       exit: [],
+      exitTails: [],
     };
 
-    const updateState = s.circles.reduce(tickState, clearState);
-    const { playableCircles, bgCircles, exit, time, combo, multiplier } = updateState;
+    const updateCircleState = s.circles.reduce(tickCircle, clearState);
+    const updateTailState = s.tails.reduce(tickTail, updateCircleState);
+    const { playableCircles, bgCircles, exit, time, combo, multiplier } = updateTailState;
 
     const newCombo = exit.length === 0 ? combo : 0;
     const newMultiplier = newCombo === 0 ? 1 : multiplier;
     const newTime = time + Constants.TICK_RATE_MS;
 
     return {
-      ...updateState,
+      ...updateTailState,
       combo: newCombo,
       multiplier: newMultiplier,
       time: newTime,
@@ -51,59 +61,72 @@ class ClickCircle implements Action {
   constructor(public readonly key: ClickKey) {}
 
   apply(s: State): State {
-    const { combo, multiplier, bgCircles, playableCircles, clickedCircles } = s;
+    const { combo, multiplier, bgCircles, playableCircles, clickedCircles, tails, score } = s;
 
     const column = Constants.COLUMN_KEYS.indexOf(this.key);
-    const closeCircles = playableCircles.filter(this.isClose(column));
+    const closeCircles = playableCircles.filter(this.isCloseTail(column));
 
     if (closeCircles.length === 0) return s;
 
     const closestCircle = this.findClosestCircle(closeCircles);
-    const filterCircles = playableCircles.filter((circle) => circle.id !== closestCircle.id);
+    const filterCircles = playableCircles.filter(not(this.isClosestCircle(closestCircle)));
     const clickClosestCircle = closestCircle.setClicked(true);
 
-    const newCombo = clickClosestCircle.incrementComboOnClick() ? combo : combo + 1;
+    const updateTails = tails.map(this.updateTail(clickClosestCircle));
+
+    const duration = (clickClosestCircle.note.end - clickClosestCircle.note.start) * Constants.S_TO_MS;
+    const newCombo = duration >= Constants.MIN_HOLD_DURATION ? combo : combo + 1;
     const newMultipler = calculateMultiplier(newCombo, multiplier);
-    const newScore = calculateScore(newCombo, newMultipler);
+    const newScore = duration >= Constants.MIN_HOLD_DURATION ? score : score + Constants.SCORE_PER_HIT * newMultipler;
 
     return {
       ...s,
       score: newScore,
       multiplier: newMultipler,
       combo: newCombo,
+      tails: updateTails,
       circles: [...filterCircles, ...bgCircles],
       playableCircles: filterCircles,
       clickedCircles: [...clickedCircles, clickClosestCircle],
     };
   }
-  isClose = (column: number) => (circle: PlayableCircleType) =>
+  isCloseTail = (column: number) => (circle: IHitCircle) =>
     circle.column === column && Math.abs(circle.cy - Constants.POINT_Y) <= Constants.CLICK_RANGE_Y;
 
-  findClosestCircle = (circles: ReadonlyArray<PlayableCircleType>): PlayableCircleType =>
+  findClosestCircle = (circles: ReadonlyArray<IHitCircle>): IHitCircle =>
     circles.reduce((closest, circle) => {
       const closestDistance = Math.abs(closest.cy - Constants.POINT_Y);
       const distance = Math.abs(circle.cy - Constants.POINT_Y);
       return distance < closestDistance ? circle : closest;
     });
+
+  isClosestCircle = (closest: IHitCircle) => (circle: IHitCircle) => circle === closest;
+
+  updateTail =
+    (closestCircle: IHitCircle) =>
+    (tail: ITail): ITail =>
+      tail.circle.id === closestCircle.id
+        ? new Tail(tail.id, tail.x, tail.y1, tail.y2, closestCircle.setClicked(true))
+        : tail;
 }
 
 class ReleaseCircle implements Action {
   constructor(public readonly key: ClickKey) {}
 
   apply(s: State): State {
-    const { tails, combo, multiplier, score, exitTails } = s;
+    const { tails, combo, multiplier, exitTails, score } = s;
 
     const column = Constants.COLUMN_KEYS.indexOf(this.key);
-    const closeTails = tails.filter(this.isClose(column));
+    const closeTails = tails.filter(this.isCloseTail(column));
 
     if (closeTails.length === 0) return s;
 
     const closestTail = this.findClosestTail(closeTails);
     const filteredTails = tails.filter(not(this.isClosestTail(closestTail)));
-    const unclickedClosestTail = this.setUnclicked(closestTail);
+    const unclickedClosestTail = closestTail.setUnclicked();
 
     if (!closestTail.circle.isClicked || !this.isWithinRange(closestTail)) {
-      const releasedEarlyTail = { ...unclickedClosestTail, isReleasedEarly: true };
+      const releasedEarlyTail = closestTail.setReleasedEarly();
 
       return {
         ...s,
@@ -115,9 +138,7 @@ class ReleaseCircle implements Action {
 
     const newCombo = combo + 1;
     const newMultipler = calculateMultiplier(newCombo, multiplier);
-    const newScore = calculateScore(newCombo, newMultipler);
-
-    console.log(unclickedClosestTail);
+    const newScore = score + Constants.SCORE_PER_HIT * newMultipler;
 
     return {
       ...s,
@@ -128,6 +149,21 @@ class ReleaseCircle implements Action {
       exitTails: [...exitTails, unclickedClosestTail],
     };
   }
+
+  getRange = (tail: ITail) => Math.abs(tail.y1 - Constants.POINT_Y);
+
+  isCloseTail = (column: number) => (tail: ITail) => tail.circle.column === column && tail.y2 === Constants.POINT_Y;
+
+  findClosestTail = (tails: ReadonlyArray<ITail>): ITail =>
+    tails.reduce((closest, tail) => {
+      const closestDistance = this.getRange(closest);
+      const distance = this.getRange(tail);
+      return distance < closestDistance ? tail : closest;
+    });
+
+  isClosestTail = (closest: ITail) => (tail: ITail) => tail === closest;
+
+  isWithinRange = (tail: ITail) => this.getRange(tail) <= Constants.CLICK_RANGE_Y;
 }
 
 class Pause implements Action {
@@ -160,7 +196,11 @@ class GameEnd implements Action {
   }
 }
 
-const tickState = (s: State, circle: ICircle): State => {
+const tickTail = (s: State, tail: ITail): State => {
+  return tail.tick(s);
+};
+
+const tickCircle = (s: State, circle: ICircle): State => {
   return circle.tick(s);
 };
 

@@ -11,31 +11,17 @@ export {
   getMinPitch,
   getMaxPitch,
   calculateMultiplier,
-  calculateScore,
 };
 
 import * as Tone from "tone";
-import { Note, Constants, IHoldCircle } from "./types";
-import { BackgroundCircle, Circle, HitCircle, HoldCircle } from "./circle";
+import { Note, Constants, IHitCircle, ICircle, ITail } from "./types";
+import { BackgroundCircle, Circle, HitCircle, Tail } from "./circle";
 
 /** Utility functions */
-
-const startNote = (circle: IHoldCircle) => {
-  const note = circle.note;
-  const normalizedVelocity = Math.min(Math.max(note.velocity, 0), 1) / Constants.MAX_MIDI_VELOCITY;
-
-  return circle.sampler.triggerAttack(Tone.Frequency(note.pitch, "midi").toNote(), undefined, normalizedVelocity);
-};
-
-const stopNote = (circle: IHoldCircle) =>
-  circle.sampler.triggerRelease(Tone.Frequency(circle.note.pitch, "midi").toNote(), undefined);
-
 const calculateMultiplier = (combo: number, multiplier: number): number =>
   combo >= Constants.COMBO_FOR_MULTIPLIER && combo % Constants.COMBO_FOR_MULTIPLIER === 0
     ? parseFloat((multiplier + Constants.MULTIPLIER_INCREMENT).toFixed(1))
     : multiplier;
-
-const calculateScore = (combo: number, multiplier: number) => combo * Constants.SCORE_PER_HIT * multiplier;
 
 const getPlayablePitches = (csv: ReadonlyArray<Note>): ReadonlyArray<number> =>
   csv.filter((note) => note.userPlayed).map((note) => note.pitch);
@@ -105,20 +91,23 @@ const getGroupedNotes = (csv: ReadonlyArray<Note>): ReadonlyArray<ReadonlyArray<
 
 const createCircle =
   (minPitch: number, maxPitch: number, samples: { [key: string]: Tone.Sampler }) =>
-  (note: Note): Circle => {
+  (note: Note): ICircle | ITail => {
     const ID = getID(note);
+    const sampler = samples[note.instrumentName];
 
     if (note.userPlayed) {
       const column = getColumn(minPitch, maxPitch, note.pitch);
-      const duration = note.end - note.start * 1000;
+      const duration = (note.end - note.start) * Constants.S_TO_MS;
+      const newHitCircle = new HitCircle(ID, note, column, sampler);
 
-      if (duration > 1000) {
-        const sampler = samples[note.instrumentName];
-        return new HoldCircle(ID, note, column, duration, sampler);
+      if (duration >= Constants.MIN_HOLD_DURATION) {
+        const y1 = newHitCircle.cy - (duration * Constants.TRAVEL_Y_PER_TICK) / Constants.TICK_RATE_MS;
+        return new Tail(`${ID}t`, newHitCircle.cx, y1, newHitCircle.cy, newHitCircle);
+      } else {
+        return newHitCircle;
       }
-      return new HitCircle(ID, note, column);
     } else {
-      return new BackgroundCircle(ID, note);
+      return new BackgroundCircle(ID, note, sampler);
     }
   };
 

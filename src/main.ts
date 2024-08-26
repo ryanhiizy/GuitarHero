@@ -18,9 +18,20 @@ import { updateView } from "./view";
 import { SampleLibrary } from "./tonejs-instruments";
 import { Constants, ClickKey, ExtraKey, Event, State, Action, Note } from "./types";
 import { parseCSV, getGroupedNotes, getMinPitch, getMaxPitch, createCircle } from "./util";
-import { initialState, Tick, reduceState, ClickCircle, Restart, GameEnd, Pause } from "./state";
+import { initialState, Tick, reduceState, ClickCircle, Restart, GameEnd, Pause, ReleaseCircle } from "./state";
 import { BehaviorSubject, from, fromEvent, interval, merge, Observable, of, Subscription } from "rxjs";
-import { map, filter, scan, mergeMap, delay, concatMap, delayWhen, concatWith, tap } from "rxjs/operators";
+import {
+  map,
+  filter,
+  scan,
+  mergeMap,
+  delay,
+  concatMap,
+  delayWhen,
+  concatWith,
+  switchMap,
+  startWith,
+} from "rxjs/operators";
 
 /**
  * This is the function called on page load. Your main game loop
@@ -55,13 +66,13 @@ export function main(csvContents: string, samples: { [key: string]: Tone.Sampler
   const keyDownThree$ = keydown$("KeyK");
   const keyDownFour$ = keydown$("KeyL");
 
-  // const keyup$ = actionKey$("keyup")((code) => new ReleaseCircle(code));
-  // const keyUpOne$ = keyup$("KeyA");
-  // const keyUpTwo$ = keyup$("KeyS");
-  // const keyUpThree$ = keyup$("KeyK");
-  // const keyUpFour$ = keyup$("KeyL");
+  const keyup$ = actionKey$("keyup")((code) => new ReleaseCircle(code));
+  const keyUpOne$ = keyup$("KeyA");
+  const keyUpTwo$ = keyup$("KeyS");
+  const keyUpThree$ = keyup$("KeyK");
+  const keyUpFour$ = keyup$("KeyL");
 
-  const restart$ = key$("keydown", "KeyR").pipe(map(() => new Restart()));
+  const keyR$ = key$("keydown", "KeyR");
   const resumeKey$ = key$("keydown", "KeyO").pipe(map(() => false));
   const pauseKey$ = key$("keydown", "KeyP").pipe(map(() => true));
 
@@ -103,32 +114,22 @@ export function main(csvContents: string, samples: { [key: string]: Tone.Sampler
     keyDownTwo$,
     keyDownThree$,
     keyDownFour$,
-    // keyUpOne$,
-    // keyUpTwo$,
-    // keyUpThree$,
-    // keyUpFour$,
+    keyUpOne$,
+    keyUpTwo$,
+    keyUpThree$,
+    keyUpFour$,
     pauseStatus$,
-    restart$,
   );
 
-  const state$: Observable<State> = action$.pipe(scan(reduceState, state));
+  const state$: Observable<State> = keyR$.pipe(
+    startWith(null),
+    switchMap(() => action$.pipe(scan(reduceState, state))),
+  );
 
   const subscription: Subscription = state$.subscribe(
-    updateView(samples, (restart: boolean, state: State) => {
+    updateView(samples, (state: State) => {
       subscription.unsubscribe();
-
-      restart
-        ? main(csvContents, samples, state)
-        : (() => {
-            const keyRSubscription = key$("keydown", "KeyR")
-              .pipe(
-                map(() => {
-                  main(csvContents, samples, state);
-                  keyRSubscription.unsubscribe();
-                }),
-              )
-              .subscribe();
-          })();
+      main(csvContents, samples, state);
     }),
   );
 }
