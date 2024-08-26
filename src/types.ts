@@ -6,10 +6,13 @@ export type {
   Event,
   State,
   ICircle,
+  IPlayableCircle,
+  PlayableCircleType,
   IHitCircle,
   IHoldCircle,
   IBackgroundCircle,
   Action,
+  ITail,
 };
 
 import * as Tone from "tone";
@@ -29,7 +32,7 @@ const Constants = {
   EXPIRED_Y: 430,
   POINT_Y: 350,
   TRAVEL_Y_PER_TICK: 3.5,
-  CLICK_RANGE_Y: 25,
+  CLICK_RANGE_Y: 40,
   SCORE_PER_HIT: 10,
   MULTIPLIER_INCREMENT: 0.2,
   COMBO_FOR_MULTIPLIER: 10,
@@ -43,6 +46,7 @@ const Viewport = {
 const NoteConstants = {
   RADIUS: 0.07 * Viewport.CANVAS_WIDTH,
   TAIL_WIDTH: 10,
+  CLASS_NAME: "playable outline",
 } as const;
 
 /** User input */
@@ -55,18 +59,22 @@ type Event = "keydown" | "keyup" | "keypress";
 
 /** Types */
 
+type PlayableCircleType = IPlayableCircle<IHitCircle> | IPlayableCircle<IHoldCircle>;
+
 type State = Readonly<{
   score: number;
   multiplier: number;
   highscore: number;
   combo: number;
-  comboCount: number;
   time: number;
+
+  tails: ReadonlyArray<ITail>;
   circles: ReadonlyArray<ICircle>;
-  hitCircles: ReadonlyArray<IHitCircle>;
-  backgroundCircles: ReadonlyArray<IBackgroundCircle>;
-  clickedCircles: ReadonlyArray<IHitCircle>;
-  exit: ReadonlyArray<IHitCircle>;
+  playableCircles: ReadonlyArray<PlayableCircleType>;
+  bgCircles: ReadonlyArray<IBackgroundCircle>;
+  clickedCircles: ReadonlyArray<PlayableCircleType>;
+  exit: ReadonlyArray<PlayableCircleType>;
+
   paused: boolean;
   restart: boolean;
   gameEnd: boolean;
@@ -81,23 +89,41 @@ type Note = Readonly<{
   end: number;
 }>;
 
+interface ITail {
+  id: string;
+  x1: number;
+  y1: number;
+  x2: number;
+  y2: number;
+  circle: IHoldCircle;
+  isReleasedEarly: boolean;
+
+  updateBodyView(rootSVG: HTMLElement): void;
+}
+
 interface ICircle {
   id: number;
   note: Note;
 
   tick(s: State): State;
+  playNote(samples: { [key: string]: Tone.Sampler }): void;
 }
 
-interface IHitCircle extends ICircle {
+interface IPlayableCircle<T extends IPlayableCircle<T>> extends ICircle {
   cx: number;
   cy: number;
-  isHit: boolean;
   column: number;
-  duration: number;
+  isClicked: boolean;
+
+  setClicked(isClicked: boolean): T;
+  updateBodyView(rootSVG: HTMLElement): void;
+  incrementComboOnClick(): boolean;
 }
 
-interface IHoldCircle extends IHitCircle {
-  synth: Tone.Synth<Tone.SynthOptions>;
+interface IHitCircle extends IPlayableCircle<IHitCircle> {}
+interface IHoldCircle extends IPlayableCircle<IHoldCircle> {
+  duration: number;
+  sampler: Tone.Sampler;
 }
 
 interface IBackgroundCircle extends ICircle {

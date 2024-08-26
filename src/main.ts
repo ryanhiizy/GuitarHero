@@ -14,81 +14,27 @@
 
 import "./style.css";
 import * as Tone from "tone";
-import { SampleLibrary } from "./tonejs-instruments";
 import { updateView } from "./view";
-import {
-  parseCSV,
-  getColumn,
-  getGroupedNotes,
-  getRelativeGroupedNotes,
-} from "./util";
-import {
-  BehaviorSubject,
-  from,
-  fromEvent,
-  interval,
-  merge,
-  Observable,
-  of,
-  Subscription,
-} from "rxjs";
-import {
-  map,
-  filter,
-  scan,
-  mergeMap,
-  mergeWith,
-  delay,
-  concatMap,
-  delayWhen,
-  concatWith,
-  tap,
-} from "rxjs/operators";
-import {
-  Constants,
-  ClickKey,
-  ExtraKey,
-  Event,
-  State,
-  Action,
-  Note,
-  ICircle,
-} from "./types";
-import {
-  initialState,
-  Tick,
-  reduceState,
-  ClickCircle,
-  Restart,
-  GameEnd,
-  Pause,
-} from "./state";
-import {
-  HitCircle,
-  BackgroundCircle,
-  HoldCircle,
-  createCircle,
-} from "./circle";
+import { SampleLibrary } from "./tonejs-instruments";
+import { Constants, ClickKey, ExtraKey, Event, State, Action, Note } from "./types";
+import { parseCSV, getGroupedNotes, getMinPitch, getMaxPitch, createCircle } from "./util";
+import { initialState, Tick, reduceState, ClickCircle, Restart, GameEnd, Pause } from "./state";
+import { BehaviorSubject, from, fromEvent, interval, merge, Observable, of, Subscription } from "rxjs";
+import { map, filter, scan, mergeMap, delay, concatMap, delayWhen, concatWith, tap } from "rxjs/operators";
 
 /**
  * This is the function called on page load. Your main game loop
  * should be called here.
  */
-export function main(
-  csvContents: string,
-  samples: { [key: string]: Tone.Sampler },
-  state: State = initialState,
-) {
-  const csv = parseCSV(csvContents);
-  const pitches = csv
-    .filter((line) => line.userPlayed)
-    .map((line) => line.pitch);
-  const minPitch = Math.min(...pitches);
-  const maxPitch = Math.max(...pitches);
+export function main(csvContents: string, samples: { [key: string]: Tone.Sampler }, state: State = initialState) {
+  const csvArray = parseCSV(csvContents);
+  const minPitch = getMinPitch(csvArray);
+  const maxPitch = getMaxPitch(csvArray);
+  const groupedNotes = getGroupedNotes(csvArray);
 
-  const groupedNotes = getGroupedNotes(csv);
-
-  const relativeGroupedNotes = getRelativeGroupedNotes(groupedNotes);
+  const pauseBehaviour$ = new BehaviorSubject<boolean>(false);
+  const pass$ = pauseBehaviour$.pipe(filter((isPaused) => !isPaused));
+  const pauseStatus$ = pauseBehaviour$.pipe(map((isPaused) => (isPaused ? new Pause(true) : new Pause(false))));
 
   const key$ = (e: Event, k: ClickKey | ExtraKey) =>
     fromEvent<KeyboardEvent>(document, e).pipe(
@@ -96,66 +42,45 @@ export function main(
       filter(({ repeat }) => !repeat),
     );
 
-  const keyDownOne$ = key$("keydown", "KeyA").pipe(
-    map(({ code }) => new ClickCircle(code as ClickKey)),
-  );
-  const keyDownTwo$ = key$("keydown", "KeyS").pipe(
-    map(({ code }) => new ClickCircle(code as ClickKey)),
-  );
-  const keyDownThree$ = key$("keydown", "KeyK").pipe(
-    map(({ code }) => new ClickCircle(code as ClickKey)),
-  );
-  const keyDownFour$ = key$("keydown", "KeyL").pipe(
-    map(({ code }) => new ClickCircle(code as ClickKey)),
-  );
+  const actionKey$ = (e: Event) => (f: (code: ClickKey) => Action) => (key: ClickKey) => {
+    return key$(e, key).pipe(
+      delayWhen(() => pass$),
+      map(({ code }) => f(code as ClickKey)),
+    );
+  };
 
-  const keyUpOne$ = key$("keyup", "KeyA").pipe(
-    map(({ code }) => new ClickCircle(code as ClickKey)),
-  );
-  const keyUpTwo$ = key$("keyup", "KeyS").pipe(
-    map(({ code }) => new ClickCircle(code as ClickKey)),
-  );
-  const keyUpThree$ = key$("keyup", "KeyK").pipe(
-    tap(console.log),
-    map(({ code }) => new ClickCircle(code as ClickKey)),
-  );
-  const keyUpFour$ = key$("keyup", "KeyL").pipe(
-    map(({ code }) => new ClickCircle(code as ClickKey)),
-  );
+  const keydown$ = actionKey$("keydown")((code) => new ClickCircle(code));
+  const keyDownOne$ = keydown$("KeyA");
+  const keyDownTwo$ = keydown$("KeyS");
+  const keyDownThree$ = keydown$("KeyK");
+  const keyDownFour$ = keydown$("KeyL");
 
-  const keyR$ = key$("keydown", "KeyR");
-  const restart$ = keyR$.pipe(
-    map(() => {
-      return new Restart();
-    }),
-  );
+  // const keyup$ = actionKey$("keyup")((code) => new ReleaseCircle(code));
+  // const keyUpOne$ = keyup$("KeyA");
+  // const keyUpTwo$ = keyup$("KeyS");
+  // const keyUpThree$ = keyup$("KeyK");
+  // const keyUpFour$ = keyup$("KeyL");
 
+  const restart$ = key$("keydown", "KeyR").pipe(map(() => new Restart()));
   const resumeKey$ = key$("keydown", "KeyO").pipe(map(() => false));
   const pauseKey$ = key$("keydown", "KeyP").pipe(map(() => true));
-  const pauseResume$ = merge(pauseKey$, resumeKey$).subscribe((isPaused) =>
-    pause$.next(isPaused),
-  );
 
-  const pause$ = new BehaviorSubject<boolean>(false);
-  const pass$ = pause$.pipe(filter((isPaused) => !isPaused));
-  const pauseObj$ = pause$.pipe(
-    map((isPaused) => (isPaused ? new Pause(true) : new Pause(false))),
-  );
+  merge(pauseKey$, resumeKey$).subscribe((isPaused) => pauseBehaviour$.next(isPaused));
 
-  const notes$ = from(relativeGroupedNotes).pipe(
-    delay(600),
+  const finalNote = csvArray[csvArray.length - 1];
+  const finalDelay = finalNote.end - finalNote.start + 5000;
+
+  const notes$ = from(groupedNotes).pipe(
     concatMap((group) =>
       of(group[0]).pipe(
         delayWhen(() => pass$),
         delay(group[0] as number),
         mergeMap(() =>
-          from(group.slice(1) as ReadonlyArray<Note>).pipe(
-            map((note) => createCircle(note, minPitch, maxPitch)),
-          ),
+          from(group.slice(1) as ReadonlyArray<Note>).pipe(map(createCircle(minPitch, maxPitch, samples))),
         ),
       ),
     ),
-    concatWith(of(new GameEnd()).pipe(delay(2000))),
+    concatWith(of(new GameEnd()).pipe(delay(finalDelay))),
   );
 
   const ticks$ = interval(Constants.TICK_RATE_MS).pipe(
@@ -168,6 +93,9 @@ export function main(
     ),
   );
 
+  // TODO: Implement restart with switchMap !!
+  //       Rethink game end logic
+
   const action$: Observable<Action> = merge(
     ticks$,
     notes$,
@@ -175,93 +103,62 @@ export function main(
     keyDownTwo$,
     keyDownThree$,
     keyDownFour$,
-    keyUpOne$,
-    keyUpTwo$,
-    keyUpThree$,
-    keyUpFour$,
-    pauseObj$,
+    // keyUpOne$,
+    // keyUpTwo$,
+    // keyUpThree$,
+    // keyUpFour$,
+    pauseStatus$,
     restart$,
   );
 
   const state$: Observable<State> = action$.pipe(scan(reduceState, state));
 
-  const note: Note = {
-    userPlayed: true,
-    instrumentName: "piano",
-    velocity: 1,
-    pitch: 60,
-    start: 0,
-    end: 1,
-  };
-
   const subscription: Subscription = state$.subscribe(
     updateView(samples, (restart: boolean, state: State) => {
       subscription.unsubscribe();
-      if (restart) {
-        main(csvContents, samples, state);
-      } else {
-        const keyRSubscription: Subscription = keyR$
-          .pipe(
-            map(() => {
-              main(csvContents, samples, state);
-              keyRSubscription.unsubscribe();
-            }),
-          )
-          .subscribe();
-      }
+
+      restart
+        ? main(csvContents, samples, state)
+        : (() => {
+            const keyRSubscription = key$("keydown", "KeyR")
+              .pipe(
+                map(() => {
+                  main(csvContents, samples, state);
+                  keyRSubscription.unsubscribe();
+                }),
+              )
+              .subscribe();
+          })();
     }),
   );
 }
 
-// function showKeys() {
-//   function showKey(k: ClickKey | ExtraKey) {
-//     const arrowKey = document.getElementById(k);
-//     // getElement might be null, in this case return without doing anything
-//     if (!arrowKey) return;
-//     const o = (e: Event) =>
-//       fromEvent<KeyboardEvent>(document, e).pipe(
-//         filter(({ code }) => code === k),
-//       );
-//     o("keydown").subscribe((e) => arrowKey.classList.add("highlight"));
-//     o("keyup").subscribe((_) => arrowKey.classList.remove("highlight"));
-//   }
-
-//   showKey("KeyA");
-//   showKey("KeyS");
-//   showKey("KeyK");
-//   showKey("KeyL");
-//   showKey("KeyP");
-//   showKey("KeyO");
-//   showKey("KeyR");
-// }
-
 // The following simply runs your main function on window load.  Make sure to leave it in place.
 // You should not need to change this, beware if you are.
+
+function showKeys() {
+  function showKey(k: ClickKey | ExtraKey) {
+    const arrowKey = document.getElementById(k);
+    // getElement might be null, in this case return without doing anything
+    if (!arrowKey) return;
+    const o = (e: Event) => fromEvent<KeyboardEvent>(document, e).pipe(filter(({ code }) => code === k));
+    o("keydown").subscribe((e) => arrowKey.classList.add("highlight"));
+    o("keyup").subscribe((_) => arrowKey.classList.remove("highlight"));
+  }
+
+  showKey("KeyA");
+  showKey("KeyS");
+  showKey("KeyK");
+  showKey("KeyL");
+  showKey("KeyP");
+  showKey("KeyO");
+  showKey("KeyR");
+}
+
 if (typeof window !== "undefined") {
   // Load in the instruments and then start your game!
   const samples = SampleLibrary.load({
-    instruments: [
-      "bass-electric",
-      "bassoon",
-      "cello",
-      "clarinet",
-      "contrabass",
-      "flute",
-      "french-horn",
-      "guitar-acoustic",
-      "guitar-electric",
-      "guitar-nylon",
-      "harmonium",
-      "harp",
-      "organ",
-      "piano",
-      "saxophone",
-      "trombone",
-      "trumpet",
-      "tuba",
-      "violin",
-      "xylophone",
-    ], // SampleLibrary.list,
+    instruments: ["bass-electric", "flute", "piano", "saxophone", "trombone", "trumpet", "violin"], // SampleLibrary.list,
     baseUrl: "samples/",
   });
 
@@ -270,7 +167,7 @@ if (typeof window !== "undefined") {
       "mousedown",
       function () {
         main(contents, samples);
-        // showKeys();
+        showKeys();
       },
       { once: true },
     );

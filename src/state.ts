@@ -1,26 +1,17 @@
-export {
-  initialState,
-  Tick,
-  reduceState,
-  ClickCircle,
-  Restart,
-  GameEnd,
-  Pause,
-};
+export { initialState, Tick, reduceState, ClickCircle, Restart, GameEnd, Pause };
 
-import { Action, State, ClickKey, Constants, ICircle } from "./types";
-import { HitCircle } from "./circle";
+import { Action, State, ClickKey, Constants, ICircle, PlayableCircleType } from "./types";
+import { calculateMultiplier, calculateScore, not } from "./util";
 
 const initialState: State = {
   score: 0,
   multiplier: 1,
   highscore: 0,
   combo: 0,
-  comboCount: 0,
   time: 0,
   circles: [],
-  hitCircles: [],
-  backgroundCircles: [],
+  playableCircles: [],
+  bgCircles: [],
   clickedCircles: [],
   exit: [],
   paused: false,
@@ -32,25 +23,24 @@ class Tick implements Action {
   apply(s: State): State {
     const clearState = {
       ...s,
-      hitCircles: [],
-      backgroundCircles: [],
+      playableCircles: [],
+      bgCircles: [],
       exit: [],
     };
 
-    const updatedState = s.circles.reduce(tickState, clearState);
-    const { hitCircles, backgroundCircles, exit, time, combo, multiplier } =
-      updatedState;
+    const updateState = s.circles.reduce(tickState, clearState);
+    const { playableCircles, bgCircles, exit, time, combo, multiplier } = updateState;
 
     const newCombo = exit.length === 0 ? combo : 0;
     const newMultiplier = newCombo === 0 ? 1 : multiplier;
     const newTime = time + Constants.TICK_RATE_MS;
 
     return {
-      ...updatedState,
+      ...updateState,
       combo: newCombo,
       multiplier: newMultiplier,
       time: newTime,
-      circles: [...hitCircles, ...backgroundCircles],
+      circles: [...playableCircles, ...bgCircles],
       clickedCircles: [],
       restart: false,
     };
@@ -61,44 +51,81 @@ class ClickCircle implements Action {
   constructor(public readonly key: ClickKey) {}
 
   apply(s: State): State {
-    console.log(this.key);
+    const { combo, multiplier, bgCircles, playableCircles, clickedCircles } = s;
 
     const column = Constants.COLUMN_KEYS.indexOf(this.key);
-    const closeCircles = s.hitCircles.filter(
-      (circle) =>
-        circle.column === column &&
-        Math.abs(circle.cy - Constants.POINT_Y) <= Constants.CLICK_RANGE_Y,
-    );
+    const closeCircles = playableCircles.filter(this.isClose(column));
 
-    if (closeCircles.length === 0) {
-      return s;
-    }
+    if (closeCircles.length === 0) return s;
 
-    const closestCircle = closeCircles.reduce((closest, circle) => {
+    const closestCircle = this.findClosestCircle(closeCircles);
+    const filterCircles = playableCircles.filter((circle) => circle.id !== closestCircle.id);
+    const clickClosestCircle = closestCircle.setClicked(true);
+
+    const newCombo = clickClosestCircle.incrementComboOnClick() ? combo : combo + 1;
+    const newMultipler = calculateMultiplier(newCombo, multiplier);
+    const newScore = calculateScore(newCombo, newMultipler);
+
+    return {
+      ...s,
+      score: newScore,
+      multiplier: newMultipler,
+      combo: newCombo,
+      circles: [...filterCircles, ...bgCircles],
+      playableCircles: filterCircles,
+      clickedCircles: [...clickedCircles, clickClosestCircle],
+    };
+  }
+  isClose = (column: number) => (circle: PlayableCircleType) =>
+    circle.column === column && Math.abs(circle.cy - Constants.POINT_Y) <= Constants.CLICK_RANGE_Y;
+
+  findClosestCircle = (circles: ReadonlyArray<PlayableCircleType>): PlayableCircleType =>
+    circles.reduce((closest, circle) => {
       const closestDistance = Math.abs(closest.cy - Constants.POINT_Y);
       const distance = Math.abs(circle.cy - Constants.POINT_Y);
       return distance < closestDistance ? circle : closest;
     });
+}
 
-    const filteredCircles = s.hitCircles.filter(
-      (circle) => circle !== closestCircle,
-    );
+class ReleaseCircle implements Action {
+  constructor(public readonly key: ClickKey) {}
 
-    const comboForMultiplier = s.combo + 1 - s.comboCount;
-    const multiplier =
-      comboForMultiplier === Constants.COMBO_FOR_MULTIPLIER
-        ? s.multiplier + Constants.MULTIPLIER_INCREMENT
-        : s.multiplier;
+  apply(s: State): State {
+    const { tails, combo, multiplier, score, exitTails } = s;
+
+    const column = Constants.COLUMN_KEYS.indexOf(this.key);
+    const closeTails = tails.filter(this.isClose(column));
+
+    if (closeTails.length === 0) return s;
+
+    const closestTail = this.findClosestTail(closeTails);
+    const filteredTails = tails.filter(not(this.isClosestTail(closestTail)));
+    const unclickedClosestTail = this.setUnclicked(closestTail);
+
+    if (!closestTail.circle.isClicked || !this.isWithinRange(closestTail)) {
+      const releasedEarlyTail = { ...unclickedClosestTail, isReleasedEarly: true };
+
+      return {
+        ...s,
+        combo: 0,
+        multiplier: 1,
+        tails: [...filteredTails, releasedEarlyTail],
+      };
+    }
+
+    const newCombo = combo + 1;
+    const newMultipler = calculateMultiplier(newCombo, multiplier);
+    const newScore = calculateScore(newCombo, newMultipler);
+
+    console.log(unclickedClosestTail);
 
     return {
       ...s,
-      multiplier: parseFloat(multiplier.toFixed(1)),
-      score: s.score + Constants.SCORE_PER_HIT * s.multiplier,
-      combo: s.combo + 1,
-      comboCount: Math.floor(s.combo / 10) * 10,
-      circles: [...filteredCircles, ...s.backgroundCircles],
-      hitCircles: filteredCircles,
-      clickedCircles: [...s.clickedCircles, { ...closestCircle, isHit: true }],
+      score: newScore,
+      multiplier: newMultipler,
+      combo: newCombo,
+      tails: filteredTails,
+      exitTails: [...exitTails, unclickedClosestTail],
     };
   }
 }
