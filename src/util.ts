@@ -19,21 +19,26 @@ import { BackgroundCircle, Circle, HitCircle, Tail } from "./circle";
 
 /** Utility functions */
 const calculateMultiplier = (combo: number, multiplier: number): number =>
-  combo >= Constants.COMBO_FOR_MULTIPLIER && combo % Constants.COMBO_FOR_MULTIPLIER === 0
+  combo >= Constants.COMBO_FOR_MULTIPLIER &&
+  combo % Constants.COMBO_FOR_MULTIPLIER === 0
     ? parseFloat((multiplier + Constants.MULTIPLIER_INCREMENT).toFixed(1))
     : multiplier;
 
 const getPlayablePitches = (csv: ReadonlyArray<Note>): ReadonlyArray<number> =>
   csv.filter((note) => note.userPlayed).map((note) => note.pitch);
 
-const getMinPitch = (csv: ReadonlyArray<Note>): number => Math.min(...getPlayablePitches(csv));
+const getMinPitch = (csv: ReadonlyArray<Note>): number =>
+  Math.min(...getPlayablePitches(csv));
 
-const getMaxPitch = (csv: ReadonlyArray<Note>): number => Math.max(...getPlayablePitches(csv));
+const getMaxPitch = (csv: ReadonlyArray<Note>): number =>
+  Math.max(...getPlayablePitches(csv));
 
-const getID = (note: Note) => parseFloat(`${note.velocity}${note.pitch}${note.start}`);
+const getID = (note: Note) =>
+  parseFloat(`${note.velocity}${note.pitch}${note.start}`);
 
 const formatLine = (line: string): Note => {
-  const [userPlayed, instrumentName, velocity, pitch, start, end] = line.split(",");
+  const [userPlayed, instrumentName, velocity, pitch, start, end] =
+    line.split(",");
   return {
     userPlayed: userPlayed === "True",
     instrumentName,
@@ -48,13 +53,19 @@ const parseCSV = (csvContents: string): ReadonlyArray<Note> => {
   return csvContents.trim().split("\n").slice(1).map(formatLine);
 };
 
-const getColumn = (minPitch: number, maxPitch: number, pitch: number): number => {
+const getColumn = (
+  minPitch: number,
+  maxPitch: number,
+  pitch: number
+): number => {
   const columnSize = (maxPitch - minPitch) / Constants.NUMBER_OF_COLUMNS;
   const column = Math.floor((pitch - minPitch) / columnSize);
   return column === Constants.NUMBER_OF_COLUMNS ? column - 1 : column;
 };
 
-const getGroupedNotesHelper = (csv: ReadonlyArray<Note>): Readonly<{ [key: string]: ReadonlyArray<Note> }> =>
+const getGroupedNotesHelper = (
+  csv: ReadonlyArray<Note>
+): Readonly<{ [key: string]: ReadonlyArray<Note> }> =>
   csv.reduce(
     (acc, note) => {
       const currentStartTime = (note.start * Constants.S_TO_MS).toFixed(3);
@@ -68,10 +79,12 @@ const getGroupedNotesHelper = (csv: ReadonlyArray<Note>): Readonly<{ [key: strin
       // Return the updated accumulator
       return updatedNotes;
     },
-    {} as Readonly<{ [key: string]: ReadonlyArray<Note> }>,
+    {} as Readonly<{ [key: string]: ReadonlyArray<Note> }>
   );
 
-const getGroupedNotes = (csv: ReadonlyArray<Note>): ReadonlyArray<ReadonlyArray<number | Note>> => {
+const getGroupedNotes = (
+  csv: ReadonlyArray<Note>
+): ReadonlyArray<ReadonlyArray<number | Note>> => {
   const groupedNotes = getGroupedNotesHelper(csv);
 
   return Object.entries(groupedNotes).reduce(
@@ -85,12 +98,16 @@ const getGroupedNotes = (csv: ReadonlyArray<Note>): ReadonlyArray<ReadonlyArray<
     {
       notes: [] as ReadonlyArray<ReadonlyArray<number | Note>>,
       previousStartTime: 0,
-    },
+    }
   ).notes;
 };
 
 const createCircle =
-  (minPitch: number, maxPitch: number, samples: { [key: string]: Tone.Sampler }) =>
+  (
+    minPitch: number,
+    maxPitch: number,
+    samples: { [key: string]: Tone.Sampler }
+  ) =>
   (note: Note): ICircle | ITail => {
     const ID = getID(note);
     const sampler = samples[note.instrumentName];
@@ -101,8 +118,16 @@ const createCircle =
       const newHitCircle = new HitCircle(ID, note, column, sampler);
 
       if (duration >= Constants.MIN_HOLD_DURATION) {
-        const y1 = newHitCircle.cy - (duration * Constants.TRAVEL_Y_PER_TICK) / Constants.TICK_RATE_MS;
-        return new Tail(`${ID}t`, newHitCircle.cx, y1, newHitCircle.cy, newHitCircle);
+        const y1 =
+          newHitCircle.cy -
+          (duration * Constants.TRAVEL_Y_PER_TICK) / Constants.TICK_RATE_MS;
+        return new Tail(
+          `${ID}t`,
+          newHitCircle.cx,
+          y1,
+          newHitCircle.cy,
+          newHitCircle
+        );
       } else {
         return newHitCircle;
       }
@@ -125,7 +150,9 @@ const not =
  * Type guard for use in filters
  * @param input something that might be null or undefined
  */
-function isNotNullOrUndefined<T extends object>(input: null | undefined | T): input is T {
+function isNotNullOrUndefined<T extends object>(
+  input: null | undefined | T
+): input is T {
   return input != null;
 }
 
