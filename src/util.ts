@@ -11,13 +11,87 @@ export {
   getMinPitch,
   getMaxPitch,
   calculateMultiplier,
+  RNG,
+  generateRandomDurationNote,
+  generateRandomNote,
+  playRandomNote,
 };
 
 import * as Tone from "tone";
-import { Note, Constants, IHitCircle, ICircle, ITail } from "./types";
+import { Note, Constants, IHitCircle, ICircle, ITail, RandomNote } from "./types";
 import { BackgroundCircle, Circle, HitCircle, HoldCircle, Tail } from "./circle";
+import { generate } from "rxjs";
 
 /** Utility functions */
+
+/**
+ * A random number generator which provides two pure functions
+ * `hash` and `scaleToRange`.  Call `hash` repeatedly to generate the
+ * sequence of hashes.
+ */
+abstract class RNG {
+  // LCG using GCC's constants
+  private static m = 0x80000000; // 2**31
+  private static a = 1103515245;
+  private static c = 12345;
+
+  /**
+   * Call `hash` repeatedly to generate the sequence of hashes.
+   * @param seed
+   * @returns a hash of the seed
+   */
+  public static hash = (seed: number) => (RNG.a * seed + RNG.c) % RNG.m;
+
+  /**
+   * Takes hash value and scales it to the specified range [lower, upper]
+   * @param hash
+   * @param lower
+   * @param upper
+   * @returns scaled value within the range [lower, upper]
+   */
+  public static scale = (lower: number, upper: number) => (hash: number) => {
+    return lower + (hash / (RNG.m - 1)) * (upper - lower);
+  };
+}
+
+const scaleToDuration = (hash: number) => RNG.scale(0.1, 1)(hash);
+const scaleToVelocity = (hash: number) => RNG.scale(0.4, 0.8)(hash);
+const scaleToPitch = (hash: number) => Math.round(RNG.scale(30, 70)(hash)); // 30 to 70 so my ears don't die
+const scaleToInstrument = (hash: number) => Math.round(RNG.scale(0, Constants.INSTRUMENTS.length - 1)(hash));
+
+const generateRandomDurationNote = (note: Note): Note => ({
+  ...note,
+  end: note.start + scaleToDuration(RNG.hash(getID(note))),
+});
+
+const generateRandomNote = (seed: number, samples: { [key: string]: Tone.Sampler }): RandomNote => {
+  const seed1 = RNG.hash(seed);
+  const seed2 = RNG.hash(seed1);
+  const seed3 = RNG.hash(seed2);
+  const seed4 = RNG.hash(seed3);
+  const randomInstrument = Constants.INSTRUMENTS[scaleToInstrument(seed1)];
+  return {
+    note: {
+      userPlayed: false,
+      instrumentName: randomInstrument,
+      velocity: scaleToVelocity(seed2),
+      pitch: scaleToPitch(seed3),
+      start: 0,
+      end: scaleToDuration(seed4),
+    },
+    sampler: samples[randomInstrument],
+  };
+};
+
+const playRandomNote = (randomNote: RandomNote) => {
+  randomNote.sampler.triggerAttackRelease(
+    Tone.Frequency(randomNote.note.pitch, "midi").toNote(),
+    randomNote.note.end,
+    undefined,
+    randomNote.note.velocity / 2,
+  );
+};
+
 const calculateMultiplier = (combo: number, multiplier: number): number =>
   combo >= Constants.COMBO_FOR_MULTIPLIER && combo % Constants.COMBO_FOR_MULTIPLIER === 0
     ? parseFloat((multiplier + Constants.MULTIPLIER_INCREMENT).toFixed(1))
@@ -99,7 +173,7 @@ const createCircle =
       const column = getColumn(minPitch, maxPitch, note.pitch);
       const duration = (note.end - note.start) * Constants.S_TO_MS;
 
-      if (duration >= Constants.MIN_HOLD_DURATION) {
+      if (duration > Constants.MIN_HOLD_DURATION) {
         const newHoldCircle = new HoldCircle(ID, note, column, sampler);
         const y1 = newHoldCircle.cy - (duration * Constants.TRAVEL_Y_PER_TICK) / Constants.TICK_RATE_MS;
 

@@ -49,7 +49,7 @@ export function main(csvContents: string, samples: { [key: string]: Tone.Sampler
     );
   };
 
-  const keydown$ = actionKey$("keydown")((code) => new ClickCircle(code));
+  const keydown$ = actionKey$("keydown")((code) => new ClickCircle(code, samples));
   const keyDownOne$ = keydown$("KeyA");
   const keyDownTwo$ = keydown$("KeyS");
   const keyDownThree$ = keydown$("KeyK");
@@ -114,7 +114,7 @@ export function main(csvContents: string, samples: { [key: string]: Tone.Sampler
   const state$: Observable<State> = action$.pipe(scan(reduceState, state));
 
   const subscription: Subscription = state$.subscribe(
-    updateView(samples, (restart: boolean, state: State) => {
+    updateView((restart: boolean, state: State) => {
       subscription.unsubscribe();
 
       restart

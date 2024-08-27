@@ -14,7 +14,7 @@ import {
   IPlayableCircle,
   IHoldCircle,
 } from "./types";
-import { attr } from "./util";
+import { attr, generateRandomDurationNote } from "./util";
 
 abstract class Circle implements ICircle {
   constructor(
@@ -32,7 +32,7 @@ abstract class Circle implements ICircle {
 
   playNote() {
     const note = this.note;
-    const normalizedVelocity = Math.min(Math.max(note.velocity, 0), 1) / Constants.MAX_MIDI_VELOCITY;
+    const normalizedVelocity = note.velocity / Constants.MAX_MIDI_VELOCITY / 2;
 
     this.sampler.triggerAttackRelease(
       Tone.Frequency(note.pitch, "midi").toNote(),
@@ -64,12 +64,12 @@ abstract class PlayableCircle<T extends IPlayableCircle<T>> extends Circle {
     const expiredCircle = !this.isActive() ? this : null;
     const moveActiveCircle = this.isActive() ? this.moveCircle() : null;
 
-    const newHitCircles = moveActiveCircle ? [...s.playableCircles, moveActiveCircle] : s.playableCircles;
+    const newPlayableCircles = moveActiveCircle ? [...s.playableCircles, moveActiveCircle] : s.playableCircles;
     const newExit = expiredCircle ? [...s.exit, expiredCircle] : s.exit;
 
     return {
       ...s,
-      playableCircles: newHitCircles,
+      playableCircles: newPlayableCircles,
       exit: newExit,
     };
   }
@@ -99,8 +99,9 @@ abstract class PlayableCircle<T extends IPlayableCircle<T>> extends Circle {
   }
 
   abstract moveCircle(): T;
-  abstract incrementComboOnClick(): boolean;
+  abstract setRandomDuration(): T;
   abstract setClicked(isClicked: boolean): T;
+  abstract incrementComboOnClick(): boolean;
 }
 
 class HitCircle extends PlayableCircle<IHitCircle> implements IHitCircle {
@@ -119,12 +120,18 @@ class HitCircle extends PlayableCircle<IHitCircle> implements IHitCircle {
     return new HitCircle(this.id, this.note, this.column, this.sampler, this.cy + Constants.TRAVEL_Y_PER_TICK);
   }
 
-  incrementComboOnClick(): boolean {
-    return true;
+  setRandomDuration(): IHitCircle {
+    const randomNote = generateRandomDurationNote(this.note);
+
+    return new HitCircle(this.id, randomNote, this.column, this.sampler, this.cy);
   }
 
   setClicked(isClicked: boolean): IHitCircle {
     return new HitCircle(this.id, this.note, this.column, this.sampler, this.cy, isClicked);
+  }
+
+  incrementComboOnClick(): boolean {
+    return true;
   }
 }
 
@@ -142,7 +149,7 @@ class HoldCircle extends PlayableCircle<IHoldCircle> implements IHoldCircle {
 
   playNote() {
     const note = this.note;
-    const normalizedVelocity = Math.min(Math.max(note.velocity, 0), 1) / Constants.MAX_MIDI_VELOCITY;
+    const normalizedVelocity = note.velocity / Constants.MAX_MIDI_VELOCITY / 2;
 
     this.sampler.triggerAttack(Tone.Frequency(note.pitch, "midi").toNote(), undefined, normalizedVelocity);
   }
@@ -151,12 +158,18 @@ class HoldCircle extends PlayableCircle<IHoldCircle> implements IHoldCircle {
     return new HoldCircle(this.id, this.note, this.column, this.sampler, this.cy + Constants.TRAVEL_Y_PER_TICK);
   }
 
-  incrementComboOnClick(): boolean {
-    return false;
+  setRandomDuration(): IHoldCircle {
+    const randomNote = generateRandomDurationNote(this.note);
+
+    return new HoldCircle(this.id, randomNote, this.column, this.sampler, this.cy);
   }
 
   setClicked(isClicked: boolean): IHoldCircle {
     return new HoldCircle(this.id, this.note, this.column, this.sampler, this.cy, isClicked);
+  }
+
+  incrementComboOnClick(): boolean {
+    return false;
   }
 }
 

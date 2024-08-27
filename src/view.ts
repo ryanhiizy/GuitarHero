@@ -2,12 +2,12 @@ export { updateView };
 
 import * as Tone from "tone";
 import { initialState } from "./state";
-import { attr, isNotNullOrUndefined } from "./util";
+import { attr, isNotNullOrUndefined, playRandomNote } from "./util";
 import { Constants, ITail, NoteConstants, State, Viewport } from "./types";
 
 /** Rendering (side effects) */
 
-const updateView = (samples: { [key: string]: Tone.Sampler }, onFinish: (restart: boolean, s: State) => void) => {
+const updateView = (onFinish: (restart: boolean, s: State) => void) => {
   return (s: State): void => {
     /**
      * Displays a SVG element on the canvas. Brings to foreground.
@@ -59,6 +59,8 @@ const updateView = (samples: { [key: string]: Tone.Sampler }, onFinish: (restart
     s.tails.forEach((tail) => tail.updateBodyView(svg));
     s.tails.filter((tail) => tail.isReleasedEarly).forEach((tail) => tail.stopNote());
 
+    s.random.forEach(playRandomNote);
+
     // Remove exited circles
     s.exit
       .map((circle) => document.getElementById(String(circle.id)))
@@ -70,7 +72,12 @@ const updateView = (samples: { [key: string]: Tone.Sampler }, onFinish: (restart
       .filter(isNotNullOrUndefined)
       .forEach((element, index) => {
         svg.removeChild(element);
-        s.exitTails[index].stopNote();
+        // index from behind to avoid error when multiple tails are released between ticks.
+        // e.g. 2 tails released between ticks. The first tail is removed but remains in the array.
+        // When the second tail is released and the array becomes of size 2, the first tail is filtered out
+        // causing forEach to only run once, so index has to be from behind to remove
+        // the correct tail.
+        s.exitTails[s.exitTails.length - 1 - index].stopNote();
       });
 
     // Update text fields

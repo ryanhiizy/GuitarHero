@@ -1,8 +1,9 @@
 export { initialState, Tick, reduceState, ClickCircle, Restart, GameEnd, Pause, ReleaseCircle };
 
-import { Tail } from "./circle";
-import { Action, State, ClickKey, Constants, ICircle, IHitCircle, ITail } from "./types";
-import { calculateMultiplier, not } from "./util";
+import * as Tone from "tone";
+import { PlayableCircle, Tail } from "./circle";
+import { Action, State, ClickKey, Constants, ICircle, ITail, PlayableCircles } from "./types";
+import { calculateMultiplier, generateRandomNote, not } from "./util";
 
 const initialState: State = {
   score: 0,
@@ -15,6 +16,7 @@ const initialState: State = {
   circles: [],
   playableCircles: [],
   bgCircles: [],
+  random: [],
 
   clickedCircles: [],
 
@@ -52,21 +54,25 @@ class Tick implements Action {
       time: newTime,
       circles: [...playableCircles, ...bgCircles],
       clickedCircles: [],
+      random: [],
       restart: false,
     };
   }
 }
 
 class ClickCircle implements Action {
-  constructor(public readonly key: ClickKey) {}
+  constructor(
+    public readonly key: ClickKey,
+    public readonly samples: { [key: string]: Tone.Sampler },
+  ) {}
 
   apply(s: State): State {
-    const { combo, multiplier, bgCircles, playableCircles, clickedCircles, tails, score } = s;
+    const { combo, multiplier, bgCircles, playableCircles, clickedCircles, tails, score, random, time } = s;
 
     const column = Constants.COLUMN_KEYS.indexOf(this.key);
     const closeCircles = playableCircles.filter(this.isCloseTail(column));
 
-    if (closeCircles.length === 0) return s;
+    if (closeCircles.length === 0) return { ...s, random: [...random, generateRandomNote(time, this.samples)] };
 
     const closestCircle = this.findClosestCircle(closeCircles);
     const filterCircles = playableCircles.filter(not(this.isClosestCircle(closestCircle)));
@@ -74,9 +80,13 @@ class ClickCircle implements Action {
 
     const updateTails = tails.map(this.updateTail(clickClosestCircle));
 
-    const newCombo = clickClosestCircle.incrementComboOnClick() ? combo + 1 : combo;
+    const updateClosestCircle = this.isMisaligned(clickClosestCircle)
+      ? clickClosestCircle.setRandomDuration()
+      : clickClosestCircle;
+
+    const newCombo = updateClosestCircle.incrementComboOnClick() ? combo + 1 : combo;
     const newMultipler = calculateMultiplier(newCombo, multiplier);
-    const newScore = clickClosestCircle.incrementComboOnClick()
+    const newScore = updateClosestCircle.incrementComboOnClick()
       ? score + Constants.SCORE_PER_HIT * newMultipler
       : score;
 
@@ -88,23 +98,26 @@ class ClickCircle implements Action {
       tails: updateTails,
       circles: [...filterCircles, ...bgCircles],
       playableCircles: filterCircles,
-      clickedCircles: [...clickedCircles, clickClosestCircle],
+      clickedCircles: [...clickedCircles, updateClosestCircle],
     };
   }
-  isCloseTail = (column: number) => (circle: IHitCircle) =>
+
+  isCloseTail = (column: number) => (circle: PlayableCircles) =>
     circle.column === column && Math.abs(circle.cy - Constants.POINT_Y) <= Constants.CLICK_RANGE_Y;
 
-  findClosestCircle = (circles: ReadonlyArray<IHitCircle>): IHitCircle =>
+  findClosestCircle = (circles: ReadonlyArray<PlayableCircles>): PlayableCircles =>
     circles.reduce((closest, circle) => {
       const closestDistance = Math.abs(closest.cy - Constants.POINT_Y);
       const distance = Math.abs(circle.cy - Constants.POINT_Y);
       return distance < closestDistance ? circle : closest;
     });
 
-  isClosestCircle = (closest: IHitCircle) => (circle: IHitCircle) => circle === closest;
+  isMisaligned = (circle: PlayableCircles) => Math.abs(circle.cy - Constants.POINT_Y) > Constants.CLICK_RANGE_Y / 2;
+
+  isClosestCircle = (closest: PlayableCircles) => (circle: PlayableCircles) => circle === closest;
 
   updateTail =
-    (closestCircle: IHitCircle) =>
+    (closestCircle: PlayableCircles) =>
     (tail: ITail): ITail =>
       tail.circle.id === closestCircle.id
         ? new Tail(tail.id, tail.x, tail.y1, tail.y2, closestCircle.setClicked(true))

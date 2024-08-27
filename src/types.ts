@@ -13,6 +13,7 @@ export type {
   ITail,
   IPlayableCircle,
   PlayableCircles,
+  RandomNote,
 };
 
 import * as Tone from "tone";
@@ -21,7 +22,7 @@ import * as Tone from "tone";
 
 const Constants = {
   TICK_RATE_MS: 5,
-  SONG_NAME: "RockinRobin",
+  SONG_NAME: "past",
   MAX_MIDI_VELOCITY: 127,
   NUMBER_OF_COLUMNS: 4,
   COLUMN_WIDTH: 20,
@@ -32,11 +33,13 @@ const Constants = {
   EXPIRED_Y: 430,
   POINT_Y: 350,
   TRAVEL_Y_PER_TICK: 3.5,
-  CLICK_RANGE_Y: 40,
+  CLICK_RANGE_Y: 50,
   SCORE_PER_HIT: 10,
   MULTIPLIER_INCREMENT: 0.2,
   COMBO_FOR_MULTIPLIER: 10,
   MIN_HOLD_DURATION: 1000,
+  INSTRUMENTS: ["bass-electric", "flute", "piano", "saxophone", "trombone", "trumpet", "violin"],
+  SEED: 999,
 } as const;
 
 const Viewport = {
@@ -71,6 +74,7 @@ type State = Readonly<{
   circles: ReadonlyArray<ICircle>;
   playableCircles: ReadonlyArray<PlayableCircles>;
   bgCircles: ReadonlyArray<IBackgroundCircle>;
+  random: ReadonlyArray<RandomNote>;
 
   clickedCircles: ReadonlyArray<PlayableCircles>;
 
@@ -91,6 +95,11 @@ type Note = Readonly<{
   end: number;
 }>;
 
+type RandomNote = Readonly<{
+  note: Note;
+  sampler: Tone.Sampler;
+}>;
+
 type PlayableCircles = IPlayableCircle<IHitCircle> | IPlayableCircle<IHoldCircle>;
 
 interface ICircle extends Action, Tickable {
@@ -108,8 +117,9 @@ interface IPlayableCircle<T extends IPlayableCircle<T>> extends ICircle {
   isClicked: boolean;
 
   updateBodyView(rootSVG: HTMLElement): void;
-  incrementComboOnClick(): boolean;
+  setRandomDuration(): T;
   setClicked(isClicked: boolean): T;
+  incrementComboOnClick(): boolean;
 }
 
 interface IHitCircle extends IPlayableCircle<IHitCircle> {}
