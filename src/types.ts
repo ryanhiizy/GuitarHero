@@ -105,17 +105,16 @@ interface IPlayableCircle<T extends IPlayableCircle<T>> extends ICircle {
 	cx: number;
 	cy: number;
 	column: number;
+	isClicked: boolean;
 
 	updateBodyView(rootSVG: HTMLElement): void;
+	incrementComboOnClick(): boolean;
+	setClicked(isClicked: boolean): T;
 }
 
 interface IHitCircle extends IPlayableCircle<IHitCircle> {}
 
-interface IHoldCircle extends IPlayableCircle<IHoldCircle> {
-	isClicked: boolean;
-
-	setClicked(isClicked: boolean): IHoldCircle;
-}
+interface IHoldCircle extends IPlayableCircle<IHoldCircle> {}
 
 interface ITail extends Action, Tickable {
 	id: string;

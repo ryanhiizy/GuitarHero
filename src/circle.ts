@@ -1,4 +1,4 @@
-export { Circle, HitCircle, Tail, BackgroundCircle };
+export { Circle, HitCircle, Tail, BackgroundCircle, PlayableCircle, HoldCircle };
 
 import * as Tone from "tone";
 import {
@@ -54,6 +54,7 @@ abstract class PlayableCircle<T extends IPlayableCircle<T>> extends Circle {
 		public readonly column: number,
 		public readonly sampler: Tone.Sampler,
 		public readonly cy: number = 0,
+		public readonly isClicked: boolean = false,
 	) {
 		super(id, note, sampler);
 		this.cx = (column + 1) * Constants.COLUMN_WIDTH;
@@ -98,6 +99,8 @@ abstract class PlayableCircle<T extends IPlayableCircle<T>> extends Circle {
 	}
 
 	abstract moveCircle(): T;
+	abstract incrementComboOnClick(): boolean;
+	abstract setClicked(isClicked: boolean): T;
 }
 
 class HitCircle extends PlayableCircle<IHitCircle> implements IHitCircle {
@@ -107,12 +110,21 @@ class HitCircle extends PlayableCircle<IHitCircle> implements IHitCircle {
 		public readonly column: number,
 		public readonly sampler: Tone.Sampler,
 		public readonly cy: number = 0,
+		public readonly isClicked: boolean = false,
 	) {
 		super(id, note, column, sampler);
 	}
 
 	moveCircle(): IHitCircle {
 		return new HitCircle(this.id, this.note, this.column, this.sampler, this.cy + Constants.TRAVEL_Y_PER_TICK);
+	}
+
+	incrementComboOnClick(): boolean {
+		return true;
+	}
+
+	setClicked(isClicked: boolean): IHitCircle {
+		return new HitCircle(this.id, this.note, this.column, this.sampler, this.cy, isClicked);
 	}
 }
 
@@ -121,26 +133,30 @@ class HoldCircle extends PlayableCircle<IHoldCircle> implements IHoldCircle {
 		public readonly id: number,
 		public readonly note: Note,
 		public readonly column: number,
-		public readonly isClicked: boolean,
 		public readonly sampler: Tone.Sampler,
 		public readonly cy: number = 0,
+		public readonly isClicked: boolean = false,
 	) {
 		super(id, note, column, sampler);
 	}
 
+	playNote() {
+		const note = this.note;
+		const normalizedVelocity = Math.min(Math.max(note.velocity, 0), 1) / Constants.MAX_MIDI_VELOCITY;
+
+		this.sampler.triggerAttack(Tone.Frequency(note.pitch, "midi").toNote(), undefined, normalizedVelocity);
+	}
+
 	moveCircle(): IHoldCircle {
-		return new HoldCircle(
-			this.id,
-			this.note,
-			this.column,
-			this.isClicked,
-			this.sampler,
-			this.cy + Constants.TRAVEL_Y_PER_TICK,
-		);
+		return new HoldCircle(this.id, this.note, this.column, this.sampler, this.cy + Constants.TRAVEL_Y_PER_TICK);
+	}
+
+	incrementComboOnClick(): boolean {
+		return false;
 	}
 
 	setClicked(isClicked: boolean): IHoldCircle {
-		return new HoldCircle(this.id, this.note, this.column, isClicked, this.sampler, this.cy);
+		return new HoldCircle(this.id, this.note, this.column, this.sampler, this.cy, isClicked);
 	}
 }
 
@@ -150,7 +166,7 @@ class Tail implements ITail {
 		public readonly x: number,
 		public readonly y1: number,
 		public readonly y2: number,
-		public readonly circle: IHitCircle,
+		public readonly circle: IHoldCircle,
 		public readonly isReleasedEarly: boolean = false,
 	) {}
 

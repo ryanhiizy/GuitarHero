@@ -74,10 +74,11 @@ class ClickCircle implements Action {
 
 		const updateTails = tails.map(this.updateTail(clickClosestCircle));
 
-		const duration = (clickClosestCircle.note.end - clickClosestCircle.note.start) * Constants.S_TO_MS;
-		const newCombo = duration >= Constants.MIN_HOLD_DURATION ? combo : combo + 1;
+		const newCombo = clickClosestCircle.incrementComboOnClick() ? combo + 1 : combo;
 		const newMultipler = calculateMultiplier(newCombo, multiplier);
-		const newScore = duration >= Constants.MIN_HOLD_DURATION ? score : score + Constants.SCORE_PER_HIT * newMultipler;
+		const newScore = clickClosestCircle.incrementComboOnClick()
+			? score + Constants.SCORE_PER_HIT * newMultipler
+			: score;
 
 		return {
 			...s,

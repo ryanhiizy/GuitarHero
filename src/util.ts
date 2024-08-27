@@ -15,7 +15,7 @@ export {
 
 import * as Tone from "tone";
 import { Note, Constants, IHitCircle, ICircle, ITail } from "./types";
-import { BackgroundCircle, Circle, HitCircle, Tail } from "./circle";
+import { BackgroundCircle, Circle, HitCircle, HoldCircle, Tail } from "./circle";
 
 /** Utility functions */
 const calculateMultiplier = (combo: number, multiplier: number): number =>
@@ -98,13 +98,14 @@ const createCircle =
 		if (note.userPlayed) {
 			const column = getColumn(minPitch, maxPitch, note.pitch);
 			const duration = (note.end - note.start) * Constants.S_TO_MS;
-			const newHitCircle = new HitCircle(ID, note, column, sampler);
 
 			if (duration >= Constants.MIN_HOLD_DURATION) {
-				const y1 = newHitCircle.cy - (duration * Constants.TRAVEL_Y_PER_TICK) / Constants.TICK_RATE_MS;
-				return new Tail(`${ID}t`, newHitCircle.cx, y1, newHitCircle.cy, newHitCircle);
+				const newHoldCircle = new HoldCircle(ID, note, column, sampler);
+				const y1 = newHoldCircle.cy - (duration * Constants.TRAVEL_Y_PER_TICK) / Constants.TICK_RATE_MS;
+
+				return new Tail(`${ID}t`, newHoldCircle.cx, y1, newHoldCircle.cy, newHoldCircle);
 			} else {
-				return newHitCircle;
+				return new HitCircle(ID, note, column, sampler);
 			}
 		} else {
 			return new BackgroundCircle(ID, note, sampler);
