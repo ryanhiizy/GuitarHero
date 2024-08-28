@@ -17,7 +17,7 @@ import * as Tone from "tone";
 import { updateView } from "./view";
 import { SampleLibrary } from "./tonejs-instruments";
 import { Constants, ClickKey, ExtraKey, Event, State, Action, Note } from "./types";
-import { parseCSV, getGroupedNotes, getMinPitch, getMaxPitch, createCircle } from "./util";
+import { parseCSV, getGroupedNotes, getMinPitch, getMaxPitch, createCircle, RNG } from "./util";
 import { initialState, Tick, reduceState, ClickCircle, Restart, GameEnd, Pause, ReleaseCircle } from "./state";
 import { BehaviorSubject, from, fromEvent, interval, merge, Observable, of, Subscription } from "rxjs";
 import { map, filter, scan, mergeMap, delay, concatMap, delayWhen, concatWith, tap } from "rxjs/operators";
@@ -42,20 +42,28 @@ export function main(csvContents: string, samples: { [key: string]: Tone.Sampler
       filter(({ repeat }) => !repeat),
     );
 
-  const actionKey$ = (e: Event) => (f: (code: ClickKey) => Action) => (key: ClickKey) => {
+  const keyDownAction$ = (e: Event) => (f: (code: ClickKey) => (seed: number) => Action) => (key: ClickKey) => {
     return key$(e, key).pipe(
       delayWhen(() => pass$),
-      map(({ code }) => f(code as ClickKey)),
+      scan((acc, _) => RNG.hash(acc), RNG.hash(Constants.SEED[key])),
+      map(f(key)),
     );
   };
 
-  const keydown$ = actionKey$("keydown")((code) => new ClickCircle(code, samples));
+  const keyUpAction$ = (e: Event) => (f: (code: ClickKey) => Action) => (key: ClickKey) => {
+    return key$(e, key).pipe(
+      delayWhen(() => pass$),
+      map(() => f(key)),
+    );
+  };
+
+  const keydown$ = keyDownAction$("keydown")((code) => (seed) => new ClickCircle(code, seed, samples));
   const keyDownOne$ = keydown$("KeyA");
   const keyDownTwo$ = keydown$("KeyS");
   const keyDownThree$ = keydown$("KeyK");
   const keyDownFour$ = keydown$("KeyL");
 
-  const keyup$ = actionKey$("keyup")((code) => new ReleaseCircle(code));
+  const keyup$ = keyUpAction$("keyup")((code) => new ReleaseCircle(code));
   const keyUpOne$ = keyup$("KeyA");
   const keyUpTwo$ = keyup$("KeyS");
   const keyUpThree$ = keyup$("KeyK");

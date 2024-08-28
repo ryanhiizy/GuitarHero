@@ -54,12 +54,13 @@ class Tick implements Action {
     const newMultiplier = newCombo === 0 ? multiplierMin : multiplier;
     const newTime = time + Constants.TICK_RATE_MS;
 
-    console.log(updateTailState);
-
     return {
       ...updateTailState,
       combo: newCombo,
-      multiplier: newMultiplier,
+      multiplier:
+        updateStarDuration === Constants.STAR_DURATION
+          ? parseFloat((newMultiplier - Constants.STAR_MULTIPLIER).toFixed(2))
+          : newMultiplier,
       time: newTime,
       circles: [...playableCircles, ...bgCircles],
       clickedCircles: [],
@@ -74,16 +75,17 @@ class Tick implements Action {
 class ClickCircle implements Action {
   constructor(
     public readonly key: ClickKey,
+    public readonly seed: number,
     public readonly samples: { [key: string]: Tone.Sampler },
   ) {}
 
   apply(s: State): State {
-    const { bgCircles, playableCircles, clickedCircles, tails, random, time } = s;
+    const { bgCircles, playableCircles, clickedCircles, tails, random } = s;
 
     const column = Constants.COLUMN_KEYS.indexOf(this.key);
     const closeCircles = playableCircles.filter(this.isCloseTail(column));
 
-    if (closeCircles.length === 0) return { ...s, random: [...random, generateRandomNote(time, this.samples)] };
+    if (closeCircles.length === 0) return { ...s, random: [...random, generateRandomNote(this.seed, this.samples)] };
 
     const closestCircle = this.findClosestCircle(closeCircles);
     const filterCircles = playableCircles.filter(not(this.isClosestCircle(closestCircle)));

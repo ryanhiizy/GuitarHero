@@ -40,12 +40,16 @@ const Constants = {
   COMBO_FOR_MULTIPLIER: 10,
   MIN_HOLD_DURATION: 1000,
   INSTRUMENTS: ["bass-electric", "flute", "piano", "saxophone", "trombone", "trumpet", "violin"],
-  SEED: 999,
-  STAR_START_TIME: 10000,
-  STAR_DURATION: 10000,
+  SEED: {
+    KeyA: 999,
+    KeyS: 888,
+    KeyK: 777,
+    KeyL: 333,
+  },
+  STAR_DURATION: 5000,
   STAR_CHANCE: 0.01,
   STAR_COLOR: "cyan",
-  STAR_MULTIPLIER: 10,
+  STAR_MULTIPLIER: 3,
 } as const;
 
 const Viewport = {

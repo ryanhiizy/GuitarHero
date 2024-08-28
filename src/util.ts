@@ -68,16 +68,15 @@ const generateRandomNote = (seed: number, samples: { [key: string]: Tone.Sampler
   const seed1 = RNG.hash(seed);
   const seed2 = RNG.hash(seed1);
   const seed3 = RNG.hash(seed2);
-  const seed4 = RNG.hash(seed3);
   const randomInstrument = Constants.INSTRUMENTS[scaleToInstrument(seed1)];
   return {
     note: {
       userPlayed: false,
       instrumentName: randomInstrument,
-      velocity: scaleToVelocity(seed2),
-      pitch: scaleToPitch(seed3),
+      velocity: scaleToVelocity(seed1),
+      pitch: scaleToPitch(seed2),
       start: 0,
-      end: scaleToDuration(seed4),
+      end: scaleToDuration(seed3),
     },
     sampler: samples[randomInstrument],
   };

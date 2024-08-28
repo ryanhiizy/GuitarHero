@@ -48,12 +48,12 @@ const updateView = (onFinish: (restart: boolean, s: State) => void) => {
 
     // Handle clicked circles
     s.clickedCircles
-      .map((circle) => document.getElementById(String(circle.id)))
+      .map((circle) => {
+        circle.playNote();
+        return document.getElementById(String(circle.id));
+      })
       .filter(isNotNullOrUndefined)
-      .forEach((element, index) => {
-        svg.removeChild(element);
-        s.clickedCircles[index].playNote();
-      });
+      .forEach((element) => svg.removeChild(element));
 
     // Update playable circles
     s.playableCircles.forEach((circle) => circle.updateBodyView(svg));
@@ -73,17 +73,12 @@ const updateView = (onFinish: (restart: boolean, s: State) => void) => {
       .forEach((element) => svg.removeChild(element));
 
     s.exitTails
-      .map((circle) => document.getElementById(String(circle.id)))
+      .map((tail) => {
+        tail.stopNote();
+        return document.getElementById(String(tail.id));
+      })
       .filter(isNotNullOrUndefined)
-      .forEach((element, index) => {
-        svg.removeChild(element);
-        // index from behind to avoid error when multiple tails are released between ticks.
-        // e.g. 2 tails released between ticks. The first tail is removed but remains in the array.
-        // When the second tail is released and the array becomes of size 2, the first tail is filtered out
-        // causing forEach to only run once, so index has to be from behind to remove
-        // the correct tail.
-        s.exitTails[s.exitTails.length - 1 - index].stopNote();
-      });
+      .forEach((element) => svg.removeChild(element));
 
     const starDurationTime = Math.ceil((Constants.STAR_DURATION - s.starDuration) / 1000);
 
