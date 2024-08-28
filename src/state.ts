@@ -11,6 +11,7 @@ const initialState: State = {
   highscore: 0,
   combo: 0,
   time: 0,
+  delay: Constants.INITIAL_DELAY,
 
   tails: [],
   circles: [],
@@ -44,7 +45,8 @@ class Tick implements Action {
 
     const updateCircleState = s.circles.reduce(tickCircle, clearState);
     const updateTailState = s.tails.reduce(tickTail, updateCircleState);
-    const { playableCircles, bgCircles, exit, time, combo, multiplier, starDuration, starPhase } = updateTailState;
+    const { playableCircles, bgCircles, exit, time, combo, multiplier, starDuration, starPhase, delay } =
+      updateTailState;
 
     const updateStarDuration = starPhase ? starDuration + Constants.TICK_RATE_MS : 0;
     const updateStarPhase = starPhase && updateStarDuration < Constants.STAR_DURATION;
@@ -67,6 +69,7 @@ class Tick implements Action {
       random: [],
       starPhase: updateStarPhase,
       starDuration: starPhase ? updateStarDuration : 0,
+      delay: updateStarDuration === Constants.STAR_DURATION ? delay - Constants.STAR_DELAY : delay,
       restart: false,
     };
   }

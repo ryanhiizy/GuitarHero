@@ -19,8 +19,19 @@ import { SampleLibrary } from "./tonejs-instruments";
 import { Constants, ClickKey, ExtraKey, Event, State, Action, Note } from "./types";
 import { parseCSV, getGroupedNotes, getMinPitch, getMaxPitch, createCircle, RNG } from "./util";
 import { initialState, Tick, reduceState, ClickCircle, Restart, GameEnd, Pause, ReleaseCircle } from "./state";
-import { BehaviorSubject, from, fromEvent, interval, merge, Observable, of, Subscription } from "rxjs";
-import { map, filter, scan, mergeMap, delay, concatMap, delayWhen, concatWith, tap } from "rxjs/operators";
+import { BehaviorSubject, from, fromEvent, interval, merge, Observable, of, Subscription, timer } from "rxjs";
+import {
+  map,
+  filter,
+  scan,
+  mergeMap,
+  delay,
+  concatMap,
+  delayWhen,
+  concatWith,
+  tap,
+  withLatestFrom,
+} from "rxjs/operators";
 
 /**
  * This is the function called on page load. Your main game loop
@@ -78,14 +89,16 @@ export function main(csvContents: string, samples: { [key: string]: Tone.Sampler
   const finalNote = csvArray[csvArray.length - 1];
   const finalDelay = finalNote.end - finalNote.start + 5000;
 
+  const delayBehavior$ = new BehaviorSubject<number>(0);
+
   const notes$ = from(groupedNotes).pipe(
-    concatMap((group) =>
-      of(group[0]).pipe(
+    concatMap(([relativeStartTime, ...notes]) =>
+      of(relativeStartTime).pipe(
         delayWhen(() => pass$),
-        delay(group[0] as number),
-        mergeMap(() =>
-          from(group.slice(1) as ReadonlyArray<Note>).pipe(map(createCircle(minPitch, maxPitch, samples))),
-        ),
+        withLatestFrom(delayBehavior$),
+        tap(([relativeStartTime, delay]) => console.log(relativeStartTime, delay)),
+        delayWhen(([relativeStartTime, delay]) => timer(relativeStartTime + delay)),
+        mergeMap(([_, delay]) => from(notes).pipe(map(createCircle(minPitch, maxPitch, samples, delay, csvArray)))),
       ),
     ),
     concatWith(of(new GameEnd()).pipe(delay(finalDelay))),
@@ -119,7 +132,13 @@ export function main(csvContents: string, samples: { [key: string]: Tone.Sampler
     restart$,
   );
 
-  const state$: Observable<State> = action$.pipe(scan(reduceState, state));
+  const state$: Observable<State> = action$.pipe(
+    scan(reduceState, state),
+    map((state) => {
+      delayBehavior$.next(state.delay);
+      return state;
+    }),
+  );
 
   const subscription: Subscription = state$.subscribe(
     updateView((restart: boolean, state: State) => {

@@ -224,6 +224,7 @@ class StarCircle extends PlayableCircle<IStarCircle> implements IStarCircle {
       combo: newCombo,
       starPhase: true,
       starDuration: 0,
+      delay: s.starPhase ? s.delay : s.delay + Constants.STAR_DELAY,
     };
   }
 

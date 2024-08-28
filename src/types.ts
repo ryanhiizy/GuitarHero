@@ -15,6 +15,7 @@ export type {
   PlayableCircles,
   RandomNote,
   IStarCircle,
+  GroupedNote,
 };
 
 import * as Tone from "tone";
@@ -30,10 +31,10 @@ const Constants = {
   NOTE_COLORS: ["green", "red", "blue", "yellow"],
   COLUMN_KEYS: ["KeyA", "KeyS", "KeyK", "KeyL"],
   S_TO_MS: 1000,
-  TRAVEL_MS: 500,
+  TRAVEL_MS: 1000,
   EXPIRED_Y: 430,
   POINT_Y: 350,
-  TRAVEL_Y_PER_TICK: 3.5,
+  TRAVEL_Y_PER_TICK: 0.7,
   CLICK_RANGE_Y: 50,
   SCORE_PER_HIT: 10,
   MULTIPLIER_INCREMENT: 0.2,
@@ -47,9 +48,11 @@ const Constants = {
     KeyL: 333,
   },
   STAR_DURATION: 5000,
-  STAR_CHANCE: 0.01,
+  STAR_CHANCE: 0.1,
   STAR_COLOR: "cyan",
   STAR_MULTIPLIER: 3,
+  STAR_DELAY: 0,
+  INITIAL_DELAY: 0,
 } as const;
 
 const Viewport = {
@@ -79,6 +82,7 @@ type State = Readonly<{
   highscore: number;
   combo: number;
   time: number;
+  delay: number;
 
   tails: ReadonlyArray<ITail>;
   circles: ReadonlyArray<ICircle>;
@@ -114,6 +118,7 @@ type RandomNote = Readonly<{
 }>;
 
 type PlayableCircles = IPlayableCircle<IHitCircle> | IPlayableCircle<IHoldCircle>;
+type GroupedNote = [relativeStartTime: number, ...notes: ReadonlyArray<Note>];
 
 interface ICircle extends Action, Tickable {
   id: number;

@@ -18,7 +18,7 @@ export {
 };
 
 import * as Tone from "tone";
-import { Note, Constants, IHitCircle, ICircle, ITail, RandomNote } from "./types";
+import { Note, Constants, IHitCircle, ICircle, ITail, RandomNote, GroupedNote } from "./types";
 import { BackgroundCircle, Circle, HitCircle, HoldCircle, StarCircle, Tail } from "./circle";
 import { generate } from "rxjs";
 
@@ -54,8 +54,8 @@ abstract class RNG {
   };
 }
 
-const scaleToDuration = (hash: number) => RNG.scale(0.1, 1)(hash);
-const scaleToVelocity = (hash: number) => RNG.scale(0.4, 0.8)(hash);
+const scaleToDuration = (hash: number) => RNG.scale(0.05, 0.5)(hash);
+const scaleToVelocity = (hash: number) => RNG.scale(0.1, 0.6)(hash);
 const scaleToPitch = (hash: number) => Math.round(RNG.scale(30, 70)(hash)); // 30 to 70 so my ears don't die
 const scaleToInstrument = (hash: number) => Math.round(RNG.scale(0, Constants.INSTRUMENTS.length - 1)(hash));
 
@@ -144,49 +144,75 @@ const getGroupedNotesHelper = (csv: ReadonlyArray<Note>): Readonly<{ [key: strin
     {} as Readonly<{ [key: string]: ReadonlyArray<Note> }>,
   );
 
-const getGroupedNotes = (csv: ReadonlyArray<Note>): ReadonlyArray<ReadonlyArray<number | Note>> => {
+const getGroupedNotes = (csv: ReadonlyArray<Note>): ReadonlyArray<GroupedNote> => {
   const groupedNotes = getGroupedNotesHelper(csv);
 
   return Object.entries(groupedNotes).reduce(
     (acc, [start, notes]) => {
       const relativeStartTime = parseFloat(start) - acc.previousStartTime;
       return {
-        notes: [...acc.notes, [relativeStartTime, ...notes]],
+        notes: [...acc.notes, [relativeStartTime, ...notes] as GroupedNote],
         previousStartTime: parseFloat(start),
       };
     },
     {
-      notes: [] as ReadonlyArray<ReadonlyArray<number | Note>>,
+      notes: [] as ReadonlyArray<GroupedNote>,
       previousStartTime: 0,
     },
   ).notes;
 };
 
-const createCircle =
-  (minPitch: number, maxPitch: number, samples: { [key: string]: Tone.Sampler }) =>
-  (note: Note): ICircle | ITail => {
-    const ID = getID(note);
-    const sampler = samples[note.instrumentName];
+const calculateDelayPercentage = (delay: number, csvArray: ReadonlyArray<Note>): number => {
+  const firstNote = csvArray[0];
+  const lastNote = csvArray[csvArray.length - 1];
 
-    if (note.userPlayed) {
-      const column = getColumn(minPitch, maxPitch, note.pitch);
-      const duration = (note.end - note.start) * Constants.S_TO_MS;
+  const originalTotalDuration = (lastNote.end - firstNote.start) * 1000;
+  const totalAdjustment = (csvArray.length - 1) * delay;
+  const newTotalDuration = originalTotalDuration + totalAdjustment;
+  const delayPercentage = newTotalDuration / originalTotalDuration;
+
+  return delayPercentage;
+};
+
+const noteAfterDelay = (delayPercentage: number, note: Note): Note => ({
+  ...note,
+  end: note.start + (note.end - note.start) * delayPercentage,
+});
+
+const createCircle =
+  (
+    minPitch: number,
+    maxPitch: number,
+    samples: { [key: string]: Tone.Sampler },
+    delay: number,
+    csvArray: ReadonlyArray<Note>,
+  ) =>
+  (note: Note): ICircle | ITail => {
+    const delayPercentage = calculateDelayPercentage(delay, csvArray);
+    const newNote = noteAfterDelay(delayPercentage, note);
+
+    const ID = getID(newNote);
+    const sampler = samples[newNote.instrumentName];
+
+    if (newNote.userPlayed) {
+      const column = getColumn(minPitch, maxPitch, newNote.pitch);
+      const duration = (newNote.end - newNote.start) * Constants.S_TO_MS;
       const starChance = RNG.scale(0, 1)(RNG.hash(ID));
 
       if (duration > Constants.MIN_HOLD_DURATION) {
-        const newHoldCircle = new HoldCircle(ID, note, column, sampler);
+        const newHoldCircle = new HoldCircle(ID, newNote, column, sampler);
         const y1 = newHoldCircle.cy - (duration * Constants.TRAVEL_Y_PER_TICK) / Constants.TICK_RATE_MS;
 
         return new Tail(`${ID}t`, newHoldCircle.cx, y1, newHoldCircle.cy, newHoldCircle);
       } else {
         if (starChance < Constants.STAR_CHANCE) {
-          return new StarCircle(ID, note, column, sampler);
+          return new StarCircle(ID, newNote, column, sampler);
         }
 
-        return new HitCircle(ID, note, column, sampler);
+        return new HitCircle(ID, newNote, column, sampler);
       }
     } else {
-      return new BackgroundCircle(ID, note, sampler);
+      return new BackgroundCircle(ID, newNote, sampler);
     }
   };
 
