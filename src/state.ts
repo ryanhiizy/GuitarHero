@@ -23,6 +23,9 @@ const initialState: State = {
   exit: [],
   exitTails: [],
 
+  starPhase: false,
+  starDuration: 0,
+
   paused: false,
   restart: false,
   gameEnd: false,
@@ -41,11 +44,17 @@ class Tick implements Action {
 
     const updateCircleState = s.circles.reduce(tickCircle, clearState);
     const updateTailState = s.tails.reduce(tickTail, updateCircleState);
-    const { playableCircles, bgCircles, exit, time, combo, multiplier } = updateTailState;
+    const { playableCircles, bgCircles, exit, time, combo, multiplier, starDuration, starPhase } = updateTailState;
+
+    const updateStarDuration = starPhase ? starDuration + Constants.TICK_RATE_MS : 0;
+    const updateStarPhase = starPhase && updateStarDuration < Constants.STAR_DURATION;
 
     const newCombo = exit.length === 0 ? combo : 0;
-    const newMultiplier = newCombo === 0 ? 1 : multiplier;
+    const multiplierMin = updateStarPhase ? Constants.STAR_MULTIPLIER + 1 : 1;
+    const newMultiplier = newCombo === 0 ? multiplierMin : multiplier;
     const newTime = time + Constants.TICK_RATE_MS;
+
+    console.log(updateTailState);
 
     return {
       ...updateTailState,
@@ -55,6 +64,8 @@ class Tick implements Action {
       circles: [...playableCircles, ...bgCircles],
       clickedCircles: [],
       random: [],
+      starPhase: updateStarPhase,
+      starDuration: starPhase ? updateStarDuration : 0,
       restart: false,
     };
   }
@@ -67,7 +78,7 @@ class ClickCircle implements Action {
   ) {}
 
   apply(s: State): State {
-    const { combo, multiplier, bgCircles, playableCircles, clickedCircles, tails, score, random, time } = s;
+    const { bgCircles, playableCircles, clickedCircles, tails, random, time } = s;
 
     const column = Constants.COLUMN_KEYS.indexOf(this.key);
     const closeCircles = playableCircles.filter(this.isCloseTail(column));
@@ -84,17 +95,10 @@ class ClickCircle implements Action {
       ? clickClosestCircle.setRandomDuration()
       : clickClosestCircle;
 
-    const newCombo = updateClosestCircle.incrementComboOnClick() ? combo + 1 : combo;
-    const newMultipler = calculateMultiplier(newCombo, multiplier);
-    const newScore = updateClosestCircle.incrementComboOnClick()
-      ? score + Constants.SCORE_PER_HIT * newMultipler
-      : score;
+    const updateScoreState = clickClosestCircle.onClick(s);
 
     return {
-      ...s,
-      score: newScore,
-      multiplier: newMultipler,
-      combo: newCombo,
+      ...updateScoreState,
       tails: updateTails,
       circles: [...filterCircles, ...bgCircles],
       playableCircles: filterCircles,
@@ -151,13 +155,13 @@ class ReleaseCircle implements Action {
     }
 
     const newCombo = combo + 1;
-    const newMultipler = calculateMultiplier(newCombo, multiplier);
-    const newScore = score + Constants.SCORE_PER_HIT * newMultipler;
+    const newMultiplier = calculateMultiplier(newCombo, multiplier);
+    const newScore = score + Constants.SCORE_PER_HIT * newMultiplier;
 
     return {
       ...s,
       score: newScore,
-      multiplier: newMultipler,
+      multiplier: newMultiplier,
       combo: newCombo,
       tails: filteredTails,
       exitTails: [...exitTails, unclickedClosestTail],

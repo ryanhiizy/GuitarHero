@@ -14,6 +14,7 @@ export type {
   IPlayableCircle,
   PlayableCircles,
   RandomNote,
+  IStarCircle,
 };
 
 import * as Tone from "tone";
@@ -22,7 +23,7 @@ import * as Tone from "tone";
 
 const Constants = {
   TICK_RATE_MS: 5,
-  SONG_NAME: "past",
+  SONG_NAME: "RockinRobin",
   MAX_MIDI_VELOCITY: 127,
   NUMBER_OF_COLUMNS: 4,
   COLUMN_WIDTH: 20,
@@ -40,6 +41,11 @@ const Constants = {
   MIN_HOLD_DURATION: 1000,
   INSTRUMENTS: ["bass-electric", "flute", "piano", "saxophone", "trombone", "trumpet", "violin"],
   SEED: 999,
+  STAR_START_TIME: 10000,
+  STAR_DURATION: 10000,
+  STAR_CHANCE: 0.01,
+  STAR_COLOR: "cyan",
+  STAR_MULTIPLIER: 10,
 } as const;
 
 const Viewport = {
@@ -81,6 +87,9 @@ type State = Readonly<{
   exit: ReadonlyArray<PlayableCircles>;
   exitTails: ReadonlyArray<ITail>;
 
+  starPhase: boolean;
+  starDuration: number;
+
   paused: boolean;
   restart: boolean;
   gameEnd: boolean;
@@ -116,15 +125,21 @@ interface IPlayableCircle<T extends IPlayableCircle<T>> extends ICircle {
   column: number;
   isClicked: boolean;
 
+  onClick(s: State): State;
   updateBodyView(rootSVG: HTMLElement): void;
   setRandomDuration(): T;
   setClicked(isClicked: boolean): T;
-  incrementComboOnClick(): boolean;
 }
 
 interface IHitCircle extends IPlayableCircle<IHitCircle> {}
 
 interface IHoldCircle extends IPlayableCircle<IHoldCircle> {}
+
+interface IStarCircle extends IPlayableCircle<IStarCircle> {}
+
+interface IBackgroundCircle extends ICircle {
+  timePassed: number;
+}
 
 interface ITail extends Action, Tickable {
   id: string;
@@ -138,10 +153,6 @@ interface ITail extends Action, Tickable {
   setUnclicked(): ITail;
   setReleasedEarly(): ITail;
   updateBodyView(rootSVG: HTMLElement): void;
-}
-
-interface IBackgroundCircle extends ICircle {
-  timePassed: number;
 }
 
 interface Tickable {

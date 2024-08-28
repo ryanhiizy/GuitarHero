@@ -1,6 +1,5 @@
 export { updateView };
 
-import * as Tone from "tone";
 import { initialState } from "./state";
 import { attr, isNotNullOrUndefined, playRandomNote } from "./util";
 import { Constants, ITail, NoteConstants, State, Viewport } from "./types";
@@ -9,6 +8,11 @@ import { Constants, ITail, NoteConstants, State, Viewport } from "./types";
 
 const updateView = (onFinish: (restart: boolean, s: State) => void) => {
   return (s: State): void => {
+    const showCondition = (id: string, condition: boolean) =>
+      ((e: HTMLElement | null) => (condition ? e?.classList.remove("hidden") : e?.classList.add("hidden")))(
+        document.getElementById(id),
+      );
+
     /**
      * Displays a SVG element on the canvas. Brings to foreground.
      * @param elem SVG element to display
@@ -32,6 +36,7 @@ const updateView = (onFinish: (restart: boolean, s: State) => void) => {
     const paused = document.querySelector("#paused") as SVGGraphicsElement & HTMLElement;
 
     // Text fields
+    const starDuration = document.querySelector("#starDurationText") as HTMLElement;
     const multiplier = document.querySelector("#multiplierText") as HTMLElement;
     const scoreText = document.querySelector("#scoreText") as HTMLElement;
     const highScoreText = document.querySelector("#highScoreText") as HTMLElement;
@@ -80,11 +85,20 @@ const updateView = (onFinish: (restart: boolean, s: State) => void) => {
         s.exitTails[s.exitTails.length - 1 - index].stopNote();
       });
 
+    const starDurationTime = Math.ceil((Constants.STAR_DURATION - s.starDuration) / 1000);
+
     // Update text fields
+    starDuration.textContent = `${s.starDuration === 0 ? 0 : starDurationTime}s`;
     highScoreText.textContent = String(s.highscore);
     scoreText.textContent = String(Math.round(s.score));
     comboText.textContent = String(s.combo);
     multiplier.textContent = `${s.multiplier}x`;
+
+    if (s.starPhase) {
+      container.style.boxShadow = "0em 0em 0.5em rgb(0, 255, 255)";
+    } else {
+      container.style.boxShadow = "0em 0em 0.5em rgb(20, 20, 20)";
+    }
 
     // Clear circles
     const clearCircles = () => {

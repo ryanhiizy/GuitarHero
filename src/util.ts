@@ -19,7 +19,7 @@ export {
 
 import * as Tone from "tone";
 import { Note, Constants, IHitCircle, ICircle, ITail, RandomNote } from "./types";
-import { BackgroundCircle, Circle, HitCircle, HoldCircle, Tail } from "./circle";
+import { BackgroundCircle, Circle, HitCircle, HoldCircle, StarCircle, Tail } from "./circle";
 import { generate } from "rxjs";
 
 /** Utility functions */
@@ -172,6 +172,7 @@ const createCircle =
     if (note.userPlayed) {
       const column = getColumn(minPitch, maxPitch, note.pitch);
       const duration = (note.end - note.start) * Constants.S_TO_MS;
+      const starChance = RNG.scale(0, 1)(RNG.hash(ID));
 
       if (duration > Constants.MIN_HOLD_DURATION) {
         const newHoldCircle = new HoldCircle(ID, note, column, sampler);
@@ -179,6 +180,10 @@ const createCircle =
 
         return new Tail(`${ID}t`, newHoldCircle.cx, y1, newHoldCircle.cy, newHoldCircle);
       } else {
+        if (starChance < Constants.STAR_CHANCE) {
+          return new StarCircle(ID, note, column, sampler);
+        }
+
         return new HitCircle(ID, note, column, sampler);
       }
     } else {

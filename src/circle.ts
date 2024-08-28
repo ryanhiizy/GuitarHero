@@ -1,4 +1,4 @@
-export { Circle, HitCircle, Tail, BackgroundCircle, PlayableCircle, HoldCircle };
+export { Circle, HitCircle, Tail, BackgroundCircle, PlayableCircle, HoldCircle, StarCircle };
 
 import * as Tone from "tone";
 import {
@@ -13,8 +13,9 @@ import {
   ITail,
   IPlayableCircle,
   IHoldCircle,
+  IStarCircle,
 } from "./types";
-import { attr, generateRandomDurationNote } from "./util";
+import { attr, calculateMultiplier, generateRandomDurationNote } from "./util";
 
 abstract class Circle implements ICircle {
   constructor(
@@ -98,10 +99,10 @@ abstract class PlayableCircle<T extends IPlayableCircle<T>> extends Circle {
     return this.cy <= Constants.EXPIRED_Y;
   }
 
+  abstract onClick(s: State): State;
   abstract moveCircle(): T;
   abstract setRandomDuration(): T;
   abstract setClicked(isClicked: boolean): T;
-  abstract incrementComboOnClick(): boolean;
 }
 
 class HitCircle extends PlayableCircle<IHitCircle> implements IHitCircle {
@@ -116,6 +117,18 @@ class HitCircle extends PlayableCircle<IHitCircle> implements IHitCircle {
     super(id, note, column, sampler);
   }
 
+  onClick(s: State): State {
+    const newCombo = s.combo + 1;
+    const newMultiplier = calculateMultiplier(newCombo, s.multiplier);
+    const newScore = s.score + Constants.SCORE_PER_HIT * newMultiplier;
+    return {
+      ...s,
+      score: newScore,
+      multiplier: newMultiplier,
+      combo: newCombo,
+    };
+  }
+
   moveCircle(): IHitCircle {
     return new HitCircle(this.id, this.note, this.column, this.sampler, this.cy + Constants.TRAVEL_Y_PER_TICK);
   }
@@ -128,10 +141,6 @@ class HitCircle extends PlayableCircle<IHitCircle> implements IHitCircle {
 
   setClicked(isClicked: boolean): IHitCircle {
     return new HitCircle(this.id, this.note, this.column, this.sampler, this.cy, isClicked);
-  }
-
-  incrementComboOnClick(): boolean {
-    return true;
   }
 }
 
@@ -154,6 +163,10 @@ class HoldCircle extends PlayableCircle<IHoldCircle> implements IHoldCircle {
     this.sampler.triggerAttack(Tone.Frequency(note.pitch, "midi").toNote(), undefined, normalizedVelocity);
   }
 
+  onClick(s: State): State {
+    return s;
+  }
+
   moveCircle(): IHoldCircle {
     return new HoldCircle(this.id, this.note, this.column, this.sampler, this.cy + Constants.TRAVEL_Y_PER_TICK);
   }
@@ -167,9 +180,65 @@ class HoldCircle extends PlayableCircle<IHoldCircle> implements IHoldCircle {
   setClicked(isClicked: boolean): IHoldCircle {
     return new HoldCircle(this.id, this.note, this.column, this.sampler, this.cy, isClicked);
   }
+}
 
-  incrementComboOnClick(): boolean {
-    return false;
+class StarCircle extends PlayableCircle<IStarCircle> implements IStarCircle {
+  constructor(
+    public readonly id: number,
+    public readonly note: Note,
+    public readonly column: number,
+    public readonly sampler: Tone.Sampler,
+    public readonly cy: number = 0,
+    public readonly isClicked: boolean = false,
+  ) {
+    super(id, note, column, sampler);
+  }
+
+  updateBodyView(rootSVG: HTMLElement) {
+    const createCircleSVG = () => {
+      const circle = document.createElementNS(rootSVG.namespaceURI, "circle");
+      attr(circle, {
+        id: this.id,
+        r: NoteConstants.RADIUS,
+        cx: `${this.cx}%`,
+        class: NoteConstants.CLASS_NAME + " star",
+        fill: Constants.STAR_COLOR,
+      });
+      rootSVG.appendChild(circle);
+      return circle;
+    };
+    const circle = document.getElementById(String(this.id)) || createCircleSVG();
+    attr(circle, {
+      cy: this.cy,
+    });
+  }
+
+  onClick(s: State): State {
+    const newCombo = s.combo + 1;
+    const newMultiplier = calculateMultiplier(newCombo, s.multiplier);
+    const newScore = s.score + Constants.SCORE_PER_HIT * newMultiplier;
+    return {
+      ...s,
+      score: newScore,
+      multiplier: s.starPhase ? newMultiplier : newMultiplier + Constants.STAR_MULTIPLIER,
+      combo: newCombo,
+      starPhase: true,
+      starDuration: 0,
+    };
+  }
+
+  moveCircle(): IStarCircle {
+    return new StarCircle(this.id, this.note, this.column, this.sampler, this.cy + Constants.TRAVEL_Y_PER_TICK);
+  }
+
+  setRandomDuration(): IStarCircle {
+    const randomNote = generateRandomDurationNote(this.note);
+
+    return new StarCircle(this.id, randomNote, this.column, this.sampler, this.cy);
+  }
+
+  setClicked(isClicked: boolean): IStarCircle {
+    return new StarCircle(this.id, this.note, this.column, this.sampler, this.cy, isClicked);
   }
 }
 
@@ -244,7 +313,7 @@ class Tail implements ITail {
         class: "playable",
         stroke: color,
         "stroke-opacity": "0.25",
-        "stroke-width": "18",
+        "stroke-width": "12",
         "stroke-linecap": "round",
       });
       rootSVG.appendChild(tail);
