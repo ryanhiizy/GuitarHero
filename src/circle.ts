@@ -25,6 +25,7 @@ abstract class Circle implements ICircle {
   ) {}
 
   apply(s: State): State {
+    // console.log(this.note.start);
     return {
       ...s,
       circles: [...s.circles, this],
@@ -68,6 +69,8 @@ abstract class PlayableCircle<T extends IPlayableCircle<T>> extends Circle {
     const newPlayableCircles = moveActiveCircle ? [...s.playableCircles, moveActiveCircle] : s.playableCircles;
     const newExit = expiredCircle ? [...s.exit, expiredCircle] : s.exit;
 
+    this.id === 80670 && console.log(expiredCircle, moveActiveCircle);
+
     return {
       ...s,
       playableCircles: newPlayableCircles,
@@ -96,7 +99,7 @@ abstract class PlayableCircle<T extends IPlayableCircle<T>> extends Circle {
   }
 
   isActive(): boolean {
-    return this.cy <= Constants.EXPIRED_Y;
+    return this.cy <= Constants.EXPIRED_Y && !this.isClicked;
   }
 
   abstract onClick(s: State): State;
@@ -130,16 +133,24 @@ class HitCircle extends PlayableCircle<IHitCircle> implements IHitCircle {
   }
 
   moveCircle(): IHitCircle {
-    return new HitCircle(this.id, this.note, this.column, this.sampler, this.cy + Constants.TRAVEL_Y_PER_TICK);
+    return new HitCircle(
+      this.id,
+      this.note,
+      this.column,
+      this.sampler,
+      this.cy + Constants.TRAVEL_Y_PER_TICK,
+      this.isClicked,
+    );
   }
 
   setRandomDuration(): IHitCircle {
     const randomNote = generateRandomDurationNote(this.note);
 
-    return new HitCircle(this.id, randomNote, this.column, this.sampler, this.cy);
+    return new HitCircle(this.id, randomNote, this.column, this.sampler, this.cy, this.isClicked);
   }
 
   setClicked(isClicked: boolean): IHitCircle {
+    console.log("setClicked", this, isClicked);
     return new HitCircle(this.id, this.note, this.column, this.sampler, this.cy, isClicked);
   }
 }
@@ -168,13 +179,20 @@ class HoldCircle extends PlayableCircle<IHoldCircle> implements IHoldCircle {
   }
 
   moveCircle(): IHoldCircle {
-    return new HoldCircle(this.id, this.note, this.column, this.sampler, this.cy + Constants.TRAVEL_Y_PER_TICK);
+    return new HoldCircle(
+      this.id,
+      this.note,
+      this.column,
+      this.sampler,
+      this.cy + Constants.TRAVEL_Y_PER_TICK,
+      this.isClicked,
+    );
   }
 
   setRandomDuration(): IHoldCircle {
     const randomNote = generateRandomDurationNote(this.note);
 
-    return new HoldCircle(this.id, randomNote, this.column, this.sampler, this.cy);
+    return new HoldCircle(this.id, randomNote, this.column, this.sampler, this.cy, this.isClicked);
   }
 
   setClicked(isClicked: boolean): IHoldCircle {
@@ -229,13 +247,20 @@ class StarCircle extends PlayableCircle<IStarCircle> implements IStarCircle {
   }
 
   moveCircle(): IStarCircle {
-    return new StarCircle(this.id, this.note, this.column, this.sampler, this.cy + Constants.TRAVEL_Y_PER_TICK);
+    return new StarCircle(
+      this.id,
+      this.note,
+      this.column,
+      this.sampler,
+      this.cy + Constants.TRAVEL_Y_PER_TICK,
+      this.isClicked,
+    );
   }
 
   setRandomDuration(): IStarCircle {
     const randomNote = generateRandomDurationNote(this.note);
 
-    return new StarCircle(this.id, randomNote, this.column, this.sampler, this.cy);
+    return new StarCircle(this.id, randomNote, this.column, this.sampler, this.cy, this.isClicked);
   }
 
   setClicked(isClicked: boolean): IStarCircle {

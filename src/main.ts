@@ -34,6 +34,8 @@ import {
   startWith,
   shareReplay,
   switchMap,
+  mergeWith,
+  share,
 } from "rxjs/operators";
 
 /**
@@ -124,7 +126,15 @@ export function main(csvContents: string, samples: { [key: string]: Tone.Sampler
 
   const state$: Observable<State> = key$("keydown", "KeyR").pipe(
     startWith(null),
-    switchMap(() => action$.pipe(scan(reduceState, initialState), startWith(initialState))),
+    switchMap(() =>
+      action$.pipe(
+        // tap(console.log),
+        scan(reduceState, initialState),
+        // tap((s) => console.log(performance.now(), s)),
+        startWith(initialState),
+      ),
+    ),
+    shareReplay(1),
   );
 
   const subscription: Subscription = state$.subscribe((s) => {

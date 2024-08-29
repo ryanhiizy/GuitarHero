@@ -35,13 +35,7 @@ const updateView = (s: State): void => {
   svg.setAttribute("width", `${Viewport.CANVAS_WIDTH}`);
 
   // Handle clicked circles
-  s.clickedCircles
-    .map((circle) => {
-      circle.playNote();
-      return document.getElementById(String(circle.id));
-    })
-    .filter(isNotNullOrUndefined)
-    .forEach((element) => svg.removeChild(element));
+  s.clickedCircles.forEach((circle) => circle.playNote());
 
   // Update playable circles
   s.playableCircles.forEach((circle) => circle.updateBodyView(svg));
@@ -82,21 +76,7 @@ const updateView = (s: State): void => {
     container.style.boxShadow = "0em 0em 0.5em rgb(20, 20, 20)";
   }
 
-  const stopHoldNotes = (tails: ReadonlyArray<ITail>) => tails.forEach((tail) => tail.stopNote());
-
-  s.paused && stopHoldNotes(s.tails);
+  s.paused && s.tails.forEach((tail) => tail.stopNote());
   show("paused", s.paused);
   show("gameOver", s.gameEnd);
-
-  // s.restart &&
-  //   (clearCircles(), stopReleasedEarlyNotes(s.tails), onFinish(true, { ...initialState, highscore: s.highscore }));
-
-  // s.gameEnd
-  //   ? (show(gameover),
-  //     clearCircles(),
-  //     onFinish(false, {
-  //       ...initialState,
-  //       highscore: Math.max(s.score, s.highscore),
-  //     }))
-  //   : hide(gameover);
 };

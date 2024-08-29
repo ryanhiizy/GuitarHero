@@ -49,12 +49,12 @@ class Tick implements Action {
     const updateStarDuration = starPhase ? starDuration + Constants.TICK_RATE_MS : 0;
     const updateStarPhase = starPhase && updateStarDuration < Constants.STAR_DURATION;
 
-    const newCombo = exit.length === 0 ? combo : 0;
+    const newCombo = exit.filter((circle) => !circle.isClicked).length === 0 ? combo : 0;
     const multiplierMin = updateStarPhase ? Constants.STAR_MULTIPLIER + 1 : 1;
     const newMultiplier = newCombo === 0 ? multiplierMin : multiplier;
     const newTime = time + Constants.TICK_RATE_MS;
 
-    // console.log(time, updateTailState);
+    // console.log(performance.now(), updateTailState);
 
     return {
       ...updateTailState,
@@ -82,7 +82,9 @@ class ClickCircle implements Action {
   ) {}
 
   apply(s: State): State {
-    const { bgCircles, playableCircles, clickedCircles, tails, random } = s;
+    const { bgCircles, playableCircles, clickedCircles, tails, random, circles } = s;
+
+    // console.log(s.circles);
 
     const column = Constants.COLUMN_KEYS.indexOf(this.key);
     const closeCircles = playableCircles.filter(this.isCloseTail(column));
@@ -90,7 +92,12 @@ class ClickCircle implements Action {
     if (closeCircles.length === 0) return { ...s, random: [...random, generateRandomNote(this.seed, this.samples)] };
 
     const closestCircle = this.findClosestCircle(closeCircles);
-    const filterCircles = playableCircles.filter(not(this.isClosestCircle(closestCircle)));
+    // When a HitCircle is added, it's only added to the circles array. It will be added
+    // to the playableCircles array in the next tick. This is a problem when you add HitCircles
+    // and ClickCircles between ticks because this filterCircles line which is used to
+    // reconstruct the circles array, will not have the HitCircles that were just added in between ticks.
+    const filterCircles = circles.filter(not(this.isClosestCircle(closestCircle)));
+    const filterPlayableCircles = playableCircles.filter(not(this.isClosestCircle(closestCircle)));
     const clickClosestCircle = closestCircle.setClicked(true);
 
     const updateTails = tails.map(this.updateTail(clickClosestCircle));
@@ -104,8 +111,8 @@ class ClickCircle implements Action {
     return {
       ...updateScoreState,
       tails: updateTails,
-      circles: [...filterCircles, ...bgCircles],
-      playableCircles: filterCircles,
+      circles: [...filterCircles, updateClosestCircle],
+      playableCircles: filterPlayableCircles,
       clickedCircles: [...clickedCircles, updateClosestCircle],
     };
   }
@@ -122,14 +129,12 @@ class ClickCircle implements Action {
 
   isMisaligned = (circle: PlayableCircles) => Math.abs(circle.cy - Constants.POINT_Y) > Constants.CLICK_RANGE_Y / 2;
 
-  isClosestCircle = (closest: PlayableCircles) => (circle: PlayableCircles) => circle === closest;
+  isClosestCircle = (closest: ICircle) => (circle: ICircle) => circle === closest;
 
   updateTail =
     (closestCircle: PlayableCircles) =>
     (tail: ITail): ITail =>
-      tail.circle.id === closestCircle.id
-        ? new Tail(tail.id, tail.x, tail.y1, tail.y2, closestCircle.setClicked(true))
-        : tail;
+      tail.circle.id === closestCircle.id ? new Tail(tail.id, tail.x, tail.y1, tail.y2, closestCircle) : tail;
 }
 
 class ReleaseCircle implements Action {

@@ -24,7 +24,7 @@ import * as Tone from "tone";
 
 const Constants = {
   TICK_RATE_MS: 5,
-  SONG_NAME: "hold",
+  SONG_NAME: "SleepingBeauty",
   MAX_MIDI_VELOCITY: 127,
   NUMBER_OF_COLUMNS: 4,
   COLUMN_WIDTH: 20,
@@ -51,7 +51,7 @@ const Constants = {
   STAR_CHANCE: 0.05,
   STAR_COLOR: "cyan",
   STAR_MULTIPLIER: 3,
-  STAR_DELAY: -50,
+  STAR_DELAY: -30,
   INITIAL_DELAY: 0,
 } as const;
 
