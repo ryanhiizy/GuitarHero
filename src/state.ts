@@ -1,8 +1,8 @@
-export { initialState, Tick, reduceState, ClickCircle, GameEnd, Pause, ReleaseCircle };
+export { initialState, Tick, reduceState, ClickCircle, GameEnd, Pause, ReleaseCircle, GameSpeed };
 
 import * as Tone from "tone";
 import { PlayableCircle, Tail } from "./circle";
-import { Action, State, ClickKey, Constants, ICircle, ITail, PlayableCircles } from "./types";
+import { Action, State, ClickKey, Constants, ICircle, ITail, PlayableCircles, GameSpeedType } from "./types";
 import { calculateMultiplier, generateRandomNote, not } from "./util";
 
 const initialState: State = {
@@ -10,7 +10,7 @@ const initialState: State = {
   multiplier: 1,
   combo: 0,
   time: 0,
-  delay: Constants.INITIAL_DELAY,
+  delay: 0,
 
   tails: [],
   circles: [],
@@ -49,7 +49,9 @@ class Tick implements Action {
     const updateStarDuration = starPhase ? starDuration + Constants.TICK_RATE_MS : 0;
     const updateStarPhase = starPhase && updateStarDuration < Constants.STAR_DURATION;
 
-    const newCombo = exit.filter((circle) => !circle.isClicked).length === 0 ? combo : 0;
+    const nonClickedExit = exit.filter((circle) => !circle.isClicked);
+
+    const newCombo = nonClickedExit.length === 0 ? combo : 0;
     const multiplierMin = updateStarPhase ? Constants.STAR_MULTIPLIER + 1 : 1;
     const newMultiplier = newCombo === 0 ? multiplierMin : multiplier;
     const newTime = time + Constants.TICK_RATE_MS;
@@ -189,6 +191,17 @@ class ReleaseCircle implements Action {
   isClosestTail = (closest: ITail) => (tail: ITail) => tail === closest;
 
   isWithinRange = (tail: ITail) => this.getRange(tail) <= Constants.CLICK_RANGE_Y;
+}
+
+class GameSpeed implements Action {
+  constructor(public readonly delay: number) {}
+
+  apply(s: State): State {
+    return {
+      ...s,
+      delay: this.delay,
+    };
+  }
 }
 
 class Pause implements Action {

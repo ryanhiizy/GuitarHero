@@ -16,10 +16,11 @@ export {
   generateRandomNote,
   playRandomNote,
   clearCanvas,
+  getDelay,
 };
 
 import * as Tone from "tone";
-import { Note, Constants, IHitCircle, ICircle, ITail, RandomNote, GroupedNote } from "./types";
+import { Note, Constants, IHitCircle, ICircle, ITail, RandomNote, GroupedNote, GameSpeedType } from "./types";
 import { BackgroundCircle, Circle, HitCircle, HoldCircle, StarCircle, Tail } from "./circle";
 import { generate } from "rxjs";
 
@@ -163,21 +164,31 @@ const getGroupedNotes = (csv: ReadonlyArray<Note>): ReadonlyArray<GroupedNote> =
   ).notes;
 };
 
-const calculateDelayPercentage = (delay: number, csvArray: ReadonlyArray<Note>): number => {
+const getDelay = (csvArray: ReadonlyArray<Note>, gameSpeed: GameSpeedType): number => {
+  const speedFactor = gameSpeed === "slow" ? 0.5 : gameSpeed === "fast" ? -0.5 : 0;
+  const firstNote = csvArray[0];
+  const lastNote = csvArray[csvArray.length - 1];
+  const totalDuration = (lastNote.end - firstNote.start) * 1000;
+  const lines = csvArray.length - 1;
+
+  return Math.floor((speedFactor * totalDuration) / lines);
+};
+
+const calculateDelayFactor = (delay: number, csvArray: ReadonlyArray<Note>): number => {
   const firstNote = csvArray[0];
   const lastNote = csvArray[csvArray.length - 1];
 
   const originalTotalDuration = (lastNote.end - firstNote.start) * 1000;
   const totalAdjustment = (csvArray.length - 1) * delay;
   const newTotalDuration = originalTotalDuration + totalAdjustment;
-  const delayPercentage = newTotalDuration / originalTotalDuration;
+  const delayFactor = newTotalDuration / originalTotalDuration;
 
-  return delayPercentage;
+  return delayFactor;
 };
 
-const noteAfterDelay = (delayPercentage: number, note: Note): Note => ({
+const noteAfterDelay = (delayFactor: number, note: Note): Note => ({
   ...note,
-  end: note.start + (note.end - note.start) * delayPercentage,
+  end: note.start + (note.end - note.start) * delayFactor,
 });
 
 const clearCanvas = () => {
@@ -193,8 +204,12 @@ const createCircle = (
   csvArray: ReadonlyArray<Note>,
   note: Note,
 ): ICircle | ITail => {
-  const delayPercentage = calculateDelayPercentage(delay, csvArray);
-  const newNote = noteAfterDelay(delayPercentage, note);
+  console.log("DELAY", delay);
+  const delayFactor = calculateDelayFactor(delay, csvArray);
+  console.log("FACTOR", delayFactor);
+  console.log("BEFORE", note.end - note.start);
+  const newNote = noteAfterDelay(delayFactor, note);
+  console.log("AFTER", newNote.end - newNote.start);
 
   const ID = getID(newNote);
   const sampler = samples[newNote.instrumentName];

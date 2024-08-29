@@ -16,9 +16,9 @@ import "./style.css";
 import * as Tone from "tone";
 import { updateView } from "./view";
 import { SampleLibrary } from "./tonejs-instruments";
-import { Constants, ClickKey, ExtraKey, Event, State, Action, Note } from "./types";
-import { parseCSV, getGroupedNotes, getMinPitch, getMaxPitch, createCircle, RNG, clearCanvas } from "./util";
-import { initialState, Tick, reduceState, ClickCircle, GameEnd, Pause, ReleaseCircle } from "./state";
+import { Constants, ClickKey, ExtraKey, Event, State, Action, Note, GameSpeedType } from "./types";
+import { parseCSV, getGroupedNotes, getMinPitch, getMaxPitch, createCircle, RNG, clearCanvas, getDelay } from "./util";
+import { initialState, Tick, reduceState, ClickCircle, GameEnd, Pause, ReleaseCircle, GameSpeed } from "./state";
 import { from, fromEvent, interval, merge, Observable, of, Subscription, timer } from "rxjs";
 import {
   map,
@@ -36,17 +36,19 @@ import {
   switchMap,
   mergeWith,
   share,
+  take,
 } from "rxjs/operators";
 
 /**
  * This is the function called on page load. Your main game loop
  * should be called here.
  */
-export function main(csvContents: string, samples: { [key: string]: Tone.Sampler }): void {
+export function main(csvContents: string, samples: { [key: string]: Tone.Sampler }, gameSpeed: GameSpeedType): void {
   const csvArray = parseCSV(csvContents);
   const minPitch = getMinPitch(csvArray);
   const maxPitch = getMaxPitch(csvArray);
   const groupedNotes = getGroupedNotes(csvArray);
+  const gameDelay = getDelay(csvArray, gameSpeed);
 
   const key$ = (e: "keydown" | "keyup", k: ClickKey | ExtraKey) =>
     fromEvent<KeyboardEvent>(document, e).pipe(
@@ -76,6 +78,8 @@ export function main(csvContents: string, samples: { [key: string]: Tone.Sampler
 
   const finalNote = csvArray[csvArray.length - 1];
   const finalDelay = finalNote.end - finalNote.start + 2000;
+
+  const gameSpeed$ = of(gameDelay).pipe(map((delay) => new GameSpeed(delay)));
 
   const note$ = from(groupedNotes).pipe(
     concatMap(([relativeStartTime, ...notes]) =>
@@ -111,6 +115,7 @@ export function main(csvContents: string, samples: { [key: string]: Tone.Sampler
   );
 
   const action$: Observable<Action> = merge(
+    gameSpeed$,
     tick$,
     note$,
     keydown$("KeyA"),
@@ -143,9 +148,6 @@ export function main(csvContents: string, samples: { [key: string]: Tone.Sampler
   });
 }
 
-// The following simply runs your main function on window load.  Make sure to leave it in place.
-// You should not need to change this, beware if you are.
-
 function showKeys() {
   function showKey(k: ClickKey | ExtraKey) {
     const arrowKey = document.getElementById(k);
@@ -165,6 +167,23 @@ function showKeys() {
   showKey("KeyR");
 }
 
+// Function to create button observables
+function createButtonObservable(buttonId: string, speed: GameSpeedType): Observable<GameSpeedType> {
+  const button = document.getElementById(buttonId);
+  return button ? fromEvent(button, "click").pipe(map(() => speed)) : of();
+}
+
+// Create observables for each button
+const slowButton$ = createButtonObservable("slowButton", "slow");
+const defaultButton$ = createButtonObservable("defaultButton", "default");
+const fastButton$ = createButtonObservable("fastButton", "fast");
+
+// Merge button observables
+const gameStart$ = merge(slowButton$, defaultButton$, fastButton$).pipe(take(1));
+
+// The following simply runs your main function on window load.  Make sure to leave it in place.
+// You should not need to change this, beware if you are.
+
 if (typeof window !== "undefined") {
   // Load in the instruments and then start your game!
   const samples = SampleLibrary.load({
@@ -172,16 +191,16 @@ if (typeof window !== "undefined") {
     baseUrl: "samples/",
   });
 
-  const startGame = (contents: string) => {
-    document.body.addEventListener(
-      "mousedown",
-      function () {
-        main(contents, samples);
-        showKeys();
-      },
-      { once: true },
-    );
-  };
+  // const startGame = (contents: string) => {
+  //   document.body.addEventListener(
+  //     "mousedown",
+  //     function () {
+  //       main(contents, samples);
+  //       showKeys();
+  //     },
+  //     { once: true },
+  //   );
+  // };
 
   const { protocol, hostname, port } = new URL(import.meta.url);
   const baseUrl = `${protocol}//${hostname}${port ? `:${port}` : ""}`;
@@ -194,7 +213,13 @@ if (typeof window !== "undefined") {
 
     fetch(`${baseUrl}/assets/${Constants.SONG_NAME}.csv`)
       .then((response) => response.text())
-      .then((text) => startGame(text))
+      .then((csvContents) => {
+        // Subscribe to the game start observable
+        gameStart$.subscribe((speed) => {
+          main(csvContents, samples, speed);
+          showKeys();
+        });
+      })
       .catch((error) => console.error("Error fetching the CSV file:", error));
   });
 }

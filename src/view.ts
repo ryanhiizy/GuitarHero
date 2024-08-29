@@ -79,4 +79,8 @@ const updateView = (s: State): void => {
   s.paused && s.tails.forEach((tail) => tail.stopNote());
   show("paused", s.paused);
   show("gameOver", s.gameEnd);
+
+  show("slowButton", false);
+  show("defaultButton", false);
+  show("fastButton", false);
 };

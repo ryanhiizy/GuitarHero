@@ -69,8 +69,6 @@ abstract class PlayableCircle<T extends IPlayableCircle<T>> extends Circle {
     const newPlayableCircles = moveActiveCircle ? [...s.playableCircles, moveActiveCircle] : s.playableCircles;
     const newExit = expiredCircle ? [...s.exit, expiredCircle] : s.exit;
 
-    this.id === 80670 && console.log(expiredCircle, moveActiveCircle);
-
     return {
       ...s,
       playableCircles: newPlayableCircles,

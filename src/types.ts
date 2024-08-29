@@ -16,6 +16,7 @@ export type {
   RandomNote,
   IStarCircle,
   GroupedNote,
+  GameSpeedType,
 };
 
 import * as Tone from "tone";
@@ -24,7 +25,7 @@ import * as Tone from "tone";
 
 const Constants = {
   TICK_RATE_MS: 5,
-  SONG_NAME: "SleepingBeauty",
+  SONG_NAME: "RockinRobin",
   MAX_MIDI_VELOCITY: 127,
   NUMBER_OF_COLUMNS: 4,
   COLUMN_WIDTH: 20,
@@ -51,8 +52,7 @@ const Constants = {
   STAR_CHANCE: 0.05,
   STAR_COLOR: "cyan",
   STAR_MULTIPLIER: 3,
-  STAR_DELAY: -30,
-  INITIAL_DELAY: 0,
+  STAR_DELAY: -25,
 } as const;
 
 const Viewport = {
@@ -117,6 +117,7 @@ type RandomNote = Readonly<{
 
 type PlayableCircles = IPlayableCircle<IHitCircle> | IPlayableCircle<IHoldCircle>;
 type GroupedNote = [relativeStartTime: number, ...notes: ReadonlyArray<Note>];
+type GameSpeedType = "slow" | "default" | "fast";
 
 interface ICircle extends Action, Tickable {
   id: number;
