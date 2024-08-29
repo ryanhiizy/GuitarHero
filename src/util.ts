@@ -15,6 +15,7 @@ export {
   generateRandomDurationNote,
   generateRandomNote,
   playRandomNote,
+  clearCanvas,
 };
 
 import * as Tone from "tone";
@@ -179,42 +180,46 @@ const noteAfterDelay = (delayPercentage: number, note: Note): Note => ({
   end: note.start + (note.end - note.start) * delayPercentage,
 });
 
-const createCircle =
-  (
-    minPitch: number,
-    maxPitch: number,
-    samples: { [key: string]: Tone.Sampler },
-    delay: number,
-    csvArray: ReadonlyArray<Note>,
-  ) =>
-  (note: Note): ICircle | ITail => {
-    const delayPercentage = calculateDelayPercentage(delay, csvArray);
-    const newNote = noteAfterDelay(delayPercentage, note);
+const clearCanvas = () => {
+  const circles = document.querySelectorAll(".playable");
+  circles.forEach((circle) => circle.remove());
+};
 
-    const ID = getID(newNote);
-    const sampler = samples[newNote.instrumentName];
+const createCircle = (
+  minPitch: number,
+  maxPitch: number,
+  samples: { [key: string]: Tone.Sampler },
+  delay: number,
+  csvArray: ReadonlyArray<Note>,
+  note: Note,
+): ICircle | ITail => {
+  const delayPercentage = calculateDelayPercentage(delay, csvArray);
+  const newNote = noteAfterDelay(delayPercentage, note);
 
-    if (newNote.userPlayed) {
-      const column = getColumn(minPitch, maxPitch, newNote.pitch);
-      const duration = (newNote.end - newNote.start) * Constants.S_TO_MS;
-      const starChance = RNG.scale(0, 1)(RNG.hash(ID));
+  const ID = getID(newNote);
+  const sampler = samples[newNote.instrumentName];
 
-      if (duration > Constants.MIN_HOLD_DURATION) {
-        const newHoldCircle = new HoldCircle(ID, newNote, column, sampler);
-        const y1 = newHoldCircle.cy - (duration * Constants.TRAVEL_Y_PER_TICK) / Constants.TICK_RATE_MS;
+  if (newNote.userPlayed) {
+    const column = getColumn(minPitch, maxPitch, newNote.pitch);
+    const duration = (newNote.end - newNote.start) * Constants.S_TO_MS;
+    const starChance = RNG.scale(0, 1)(RNG.hash(ID));
 
-        return new Tail(`${ID}t`, newHoldCircle.cx, y1, newHoldCircle.cy, newHoldCircle);
-      } else {
-        if (starChance < Constants.STAR_CHANCE) {
-          return new StarCircle(ID, newNote, column, sampler);
-        }
+    if (duration > Constants.MIN_HOLD_DURATION) {
+      const newHoldCircle = new HoldCircle(ID, newNote, column, sampler);
+      const y1 = newHoldCircle.cy - (duration * Constants.TRAVEL_Y_PER_TICK) / Constants.TICK_RATE_MS;
 
-        return new HitCircle(ID, newNote, column, sampler);
-      }
+      return new Tail(`${ID}t`, newHoldCircle.cx, y1, newHoldCircle.cy, newHoldCircle);
     } else {
-      return new BackgroundCircle(ID, newNote, sampler);
+      if (starChance < Constants.STAR_CHANCE) {
+        return new StarCircle(ID, newNote, column, sampler);
+      }
+
+      return new HitCircle(ID, newNote, column, sampler);
     }
-  };
+  } else {
+    return new BackgroundCircle(ID, newNote, sampler);
+  }
+};
 
 /**
  * Composable not: invert boolean result of given function

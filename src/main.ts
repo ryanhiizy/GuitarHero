@@ -17,9 +17,9 @@ import * as Tone from "tone";
 import { updateView } from "./view";
 import { SampleLibrary } from "./tonejs-instruments";
 import { Constants, ClickKey, ExtraKey, Event, State, Action, Note } from "./types";
-import { parseCSV, getGroupedNotes, getMinPitch, getMaxPitch, createCircle, RNG } from "./util";
-import { initialState, Tick, reduceState, ClickCircle, Restart, GameEnd, Pause, ReleaseCircle } from "./state";
-import { BehaviorSubject, from, fromEvent, interval, merge, Observable, of, Subscription, timer } from "rxjs";
+import { parseCSV, getGroupedNotes, getMinPitch, getMaxPitch, createCircle, RNG, clearCanvas } from "./util";
+import { initialState, Tick, reduceState, ClickCircle, GameEnd, Pause, ReleaseCircle } from "./state";
+import { from, fromEvent, interval, merge, Observable, of, Subscription, timer } from "rxjs";
 import {
   map,
   filter,
@@ -29,82 +29,76 @@ import {
   concatMap,
   delayWhen,
   concatWith,
-  tap,
   withLatestFrom,
+  tap,
+  startWith,
+  shareReplay,
+  switchMap,
 } from "rxjs/operators";
 
 /**
  * This is the function called on page load. Your main game loop
  * should be called here.
  */
-export function main(csvContents: string, samples: { [key: string]: Tone.Sampler }, state: State = initialState) {
+export function main(csvContents: string, samples: { [key: string]: Tone.Sampler }): void {
   const csvArray = parseCSV(csvContents);
   const minPitch = getMinPitch(csvArray);
   const maxPitch = getMaxPitch(csvArray);
   const groupedNotes = getGroupedNotes(csvArray);
 
-  const pauseBehaviour$ = new BehaviorSubject<boolean>(false);
-  const pass$ = pauseBehaviour$.pipe(filter((isPaused) => !isPaused));
-  const pauseStatus$ = pauseBehaviour$.pipe(map((isPaused) => (isPaused ? new Pause(true) : new Pause(false))));
-
-  const key$ = (e: Event, k: ClickKey | ExtraKey) =>
+  const key$ = (e: "keydown" | "keyup", k: ClickKey | ExtraKey) =>
     fromEvent<KeyboardEvent>(document, e).pipe(
       filter(({ code }) => code === k),
       filter(({ repeat }) => !repeat),
     );
 
-  const keyDownAction$ = (e: Event) => (f: (code: ClickKey) => (seed: number) => Action) => (key: ClickKey) => {
-    return key$(e, key).pipe(
-      delayWhen(() => pass$),
+  const pause$ = merge(
+    key$("keydown", "KeyP").pipe(map(() => true)),
+    key$("keydown", "KeyO").pipe(map(() => false)),
+  ).pipe(startWith(false), shareReplay(1));
+
+  const pass$ = pause$.pipe(filter((isPaused) => !isPaused));
+
+  const pauseAction$ = pause$.pipe(map((isPaused) => new Pause(isPaused)));
+
+  const keyAction$ = (e: "keydown" | "keyup") => (f: (code: ClickKey, seed: number) => Action) => (key: ClickKey) =>
+    key$(e, key).pipe(
+      withLatestFrom(pause$),
+      filter(([_, isPaused]) => !isPaused),
       scan((acc, _) => RNG.hash(acc), RNG.hash(Constants.SEED[key])),
-      map(f(key)),
+      map((seed) => f(key, seed)),
     );
-  };
 
-  const keyUpAction$ = (e: Event) => (f: (code: ClickKey) => Action) => (key: ClickKey) => {
-    return key$(e, key).pipe(
-      delayWhen(() => pass$),
-      map(() => f(key)),
-    );
-  };
-
-  const keydown$ = keyDownAction$("keydown")((code) => (seed) => new ClickCircle(code, seed, samples));
-  const keyDownOne$ = keydown$("KeyA");
-  const keyDownTwo$ = keydown$("KeyS");
-  const keyDownThree$ = keydown$("KeyK");
-  const keyDownFour$ = keydown$("KeyL");
-
-  const keyup$ = keyUpAction$("keyup")((code) => new ReleaseCircle(code));
-  const keyUpOne$ = keyup$("KeyA");
-  const keyUpTwo$ = keyup$("KeyS");
-  const keyUpThree$ = keyup$("KeyK");
-  const keyUpFour$ = keyup$("KeyL");
-
-  const restart$ = key$("keydown", "KeyR").pipe(map(() => new Restart()));
-  const resumeKey$ = key$("keydown", "KeyO").pipe(map(() => false));
-  const pauseKey$ = key$("keydown", "KeyP").pipe(map(() => true));
-
-  merge(pauseKey$, resumeKey$).subscribe((isPaused) => pauseBehaviour$.next(isPaused));
+  const keydown$ = keyAction$("keydown")((code, seed) => new ClickCircle(code, seed, samples));
+  const keyup$ = keyAction$("keyup")((code) => new ReleaseCircle(code));
 
   const finalNote = csvArray[csvArray.length - 1];
-  const finalDelay = finalNote.end - finalNote.start + 5000;
+  const finalDelay = finalNote.end - finalNote.start + 2000;
 
-  const delayBehavior$ = new BehaviorSubject<number>(0);
-
-  const notes$ = from(groupedNotes).pipe(
+  const note$ = from(groupedNotes).pipe(
     concatMap(([relativeStartTime, ...notes]) =>
       of(relativeStartTime).pipe(
         delayWhen(() => pass$),
-        withLatestFrom(delayBehavior$),
-        tap(([relativeStartTime, delay]) => console.log(relativeStartTime, delay)),
-        delayWhen(([relativeStartTime, delay]) => timer(relativeStartTime + delay)),
-        mergeMap(([_, delay]) => from(notes).pipe(map(createCircle(minPitch, maxPitch, samples, delay, csvArray)))),
+        withLatestFrom(state$),
+        delayWhen(([relativeStartTime, state]) => timer(relativeStartTime + state.delay)),
+        mergeMap(() =>
+          from(notes).pipe(
+            withLatestFrom(state$),
+            map(([note, state]) => createCircle(minPitch, maxPitch, samples, state.delay, csvArray, note)),
+          ),
+        ),
       ),
     ),
-    concatWith(of(new GameEnd()).pipe(delay(finalDelay))),
+    concatWith(
+      timer(finalDelay).pipe(
+        delayWhen(() => pass$),
+        delay(2000),
+        map(() => new GameEnd()),
+      ),
+    ),
   );
 
-  const ticks$ = interval(Constants.TICK_RATE_MS).pipe(
+  const tick$ = interval(Constants.TICK_RATE_MS).pipe(
     concatMap((tick) =>
       of(tick).pipe(
         delayWhen(() => pass$),
@@ -114,50 +108,29 @@ export function main(csvContents: string, samples: { [key: string]: Tone.Sampler
     ),
   );
 
-  // TODO: Implement restart with switchMap !!
-  //       Rethink game end logic
-
   const action$: Observable<Action> = merge(
-    ticks$,
-    notes$,
-    keyDownOne$,
-    keyDownTwo$,
-    keyDownThree$,
-    keyDownFour$,
-    keyUpOne$,
-    keyUpTwo$,
-    keyUpThree$,
-    keyUpFour$,
-    pauseStatus$,
-    restart$,
+    tick$,
+    note$,
+    keydown$("KeyA"),
+    keydown$("KeyS"),
+    keydown$("KeyK"),
+    keydown$("KeyL"),
+    keyup$("KeyA"),
+    keyup$("KeyS"),
+    keyup$("KeyK"),
+    keyup$("KeyL"),
+    pauseAction$,
   );
 
-  const state$: Observable<State> = action$.pipe(
-    scan(reduceState, state),
-    map((state) => {
-      delayBehavior$.next(state.delay);
-      return state;
-    }),
+  const state$: Observable<State> = key$("keydown", "KeyR").pipe(
+    startWith(null),
+    switchMap(() => action$.pipe(scan(reduceState, initialState), startWith(initialState))),
   );
 
-  const subscription: Subscription = state$.subscribe(
-    updateView((restart: boolean, state: State) => {
-      subscription.unsubscribe();
-
-      restart
-        ? main(csvContents, samples, state)
-        : (() => {
-            const keyRSubscription = key$("keydown", "KeyR")
-              .pipe(
-                map(() => {
-                  main(csvContents, samples, state);
-                  keyRSubscription.unsubscribe();
-                }),
-              )
-              .subscribe();
-          })();
-    }),
-  );
+  const subscription: Subscription = state$.subscribe((s) => {
+    s === initialState && clearCanvas();
+    updateView(s);
+  });
 }
 
 // The following simply runs your main function on window load.  Make sure to leave it in place.

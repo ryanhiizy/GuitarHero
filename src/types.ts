@@ -24,17 +24,17 @@ import * as Tone from "tone";
 
 const Constants = {
   TICK_RATE_MS: 5,
-  SONG_NAME: "RockinRobin",
+  SONG_NAME: "hold",
   MAX_MIDI_VELOCITY: 127,
   NUMBER_OF_COLUMNS: 4,
   COLUMN_WIDTH: 20,
   NOTE_COLORS: ["green", "red", "blue", "yellow"],
   COLUMN_KEYS: ["KeyA", "KeyS", "KeyK", "KeyL"],
   S_TO_MS: 1000,
-  TRAVEL_MS: 1000,
+  TRAVEL_MS: 500,
   EXPIRED_Y: 430,
   POINT_Y: 350,
-  TRAVEL_Y_PER_TICK: 0.7,
+  TRAVEL_Y_PER_TICK: 3.5,
   CLICK_RANGE_Y: 50,
   SCORE_PER_HIT: 10,
   MULTIPLIER_INCREMENT: 0.2,
@@ -48,10 +48,10 @@ const Constants = {
     KeyL: 333,
   },
   STAR_DURATION: 5000,
-  STAR_CHANCE: 0.1,
+  STAR_CHANCE: 0.05,
   STAR_COLOR: "cyan",
   STAR_MULTIPLIER: 3,
-  STAR_DELAY: 0,
+  STAR_DELAY: -50,
   INITIAL_DELAY: 0,
 } as const;
 
@@ -79,7 +79,6 @@ type Event = "keydown" | "keyup" | "keypress";
 type State = Readonly<{
   score: number;
   multiplier: number;
-  highscore: number;
   combo: number;
   time: number;
   delay: number;
@@ -99,7 +98,6 @@ type State = Readonly<{
   starDuration: number;
 
   paused: boolean;
-  restart: boolean;
   gameEnd: boolean;
 }>;
 
@@ -156,11 +154,10 @@ interface ITail extends Action, Tickable {
   y1: number;
   y2: number;
   circle: IHoldCircle;
-  isReleasedEarly: boolean;
 
   stopNote(): void;
+  isClicked(): boolean;
   setUnclicked(): ITail;
-  setReleasedEarly(): ITail;
   updateBodyView(rootSVG: HTMLElement): void;
 }
 

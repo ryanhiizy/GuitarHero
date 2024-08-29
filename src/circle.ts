@@ -250,7 +250,6 @@ class Tail implements ITail {
     public readonly y1: number,
     public readonly y2: number,
     public readonly circle: IHoldCircle,
-    public readonly isReleasedEarly: boolean = false,
   ) {}
 
   apply(s: State): State {
@@ -284,21 +283,20 @@ class Tail implements ITail {
   }
 
   moveTail(): Tail {
-    const circle = this.circle;
     const movedY1 = this.y1 + Constants.TRAVEL_Y_PER_TICK;
-    const newY1 = circle.isClicked && !this.isReleasedEarly ? Math.min(movedY1, Constants.POINT_Y) : movedY1;
+    const newY1 = this.isClicked() ? Math.min(movedY1, Constants.POINT_Y) : movedY1;
     const movedY2 = this.y2 + Constants.TRAVEL_Y_PER_TICK;
-    const newY2 = circle.isClicked && !this.isReleasedEarly ? Math.min(movedY2, Constants.POINT_Y) : movedY2;
+    const newY2 = this.isClicked() ? Math.min(movedY2, Constants.POINT_Y) : movedY2;
 
-    return new Tail(this.id, this.x, newY1, newY2, circle, this.isReleasedEarly);
+    return new Tail(this.id, this.x, newY1, newY2, this.circle);
   }
 
-  setReleasedEarly(): ITail {
-    return new Tail(this.id, this.x, this.y1, this.y2, this.circle, true);
+  isClicked(): boolean {
+    return this.circle.isClicked;
   }
 
   setUnclicked(): ITail {
-    return new Tail(this.id, this.x, this.y1, this.y2, this.circle.setClicked(false), this.isReleasedEarly);
+    return new Tail(this.id, this.x, this.y1, this.y2, this.circle.setClicked(false));
   }
 
   updateBodyView(rootSVG: HTMLElement) {
@@ -325,7 +323,7 @@ class Tail implements ITail {
     attr(tail, {
       y1: this.y1,
       y2: this.y2,
-      "stroke-opacity": this.y2 === Constants.POINT_Y && this.circle.isClicked ? "1" : "0.25",
+      "stroke-opacity": this.y2 === Constants.POINT_Y && this.isClicked() ? "1" : "0.25",
     });
   }
 }

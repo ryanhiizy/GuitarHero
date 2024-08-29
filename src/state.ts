@@ -1,4 +1,4 @@
-export { initialState, Tick, reduceState, ClickCircle, Restart, GameEnd, Pause, ReleaseCircle };
+export { initialState, Tick, reduceState, ClickCircle, GameEnd, Pause, ReleaseCircle };
 
 import * as Tone from "tone";
 import { PlayableCircle, Tail } from "./circle";
@@ -8,7 +8,6 @@ import { calculateMultiplier, generateRandomNote, not } from "./util";
 const initialState: State = {
   score: 0,
   multiplier: 1,
-  highscore: 0,
   combo: 0,
   time: 0,
   delay: Constants.INITIAL_DELAY,
@@ -28,7 +27,6 @@ const initialState: State = {
   starDuration: 0,
 
   paused: false,
-  restart: false,
   gameEnd: false,
 } as const;
 
@@ -56,6 +54,8 @@ class Tick implements Action {
     const newMultiplier = newCombo === 0 ? multiplierMin : multiplier;
     const newTime = time + Constants.TICK_RATE_MS;
 
+    // console.log(time, updateTailState);
+
     return {
       ...updateTailState,
       combo: newCombo,
@@ -70,7 +70,6 @@ class Tick implements Action {
       starPhase: updateStarPhase,
       starDuration: starPhase ? updateStarDuration : 0,
       delay: updateStarDuration === Constants.STAR_DURATION ? delay - Constants.STAR_DELAY : delay,
-      restart: false,
     };
   }
 }
@@ -145,17 +144,15 @@ class ReleaseCircle implements Action {
     if (closeTails.length === 0) return s;
 
     const closestTail = this.findClosestTail(closeTails);
-    const filteredTails = tails.filter(not(this.isClosestTail(closestTail)));
     const unclickedClosestTail = closestTail.setUnclicked();
+    const filteredTails = tails.filter(not(this.isClosestTail(closestTail)));
 
-    if (!closestTail.circle.isClicked || !this.isWithinRange(closestTail)) {
-      const releasedEarlyTail = closestTail.setReleasedEarly();
-
+    if (!this.isWithinRange(closestTail)) {
       return {
         ...s,
         combo: 0,
         multiplier: 1,
-        tails: [...filteredTails, releasedEarlyTail],
+        tails: [...filteredTails, unclickedClosestTail],
       };
     }
 
@@ -175,7 +172,7 @@ class ReleaseCircle implements Action {
 
   getRange = (tail: ITail) => Math.abs(tail.y1 - Constants.POINT_Y);
 
-  isCloseTail = (column: number) => (tail: ITail) => tail.circle.column === column && tail.y2 === Constants.POINT_Y;
+  isCloseTail = (column: number) => (tail: ITail) => tail.isClicked() && tail.circle.column === column;
 
   findClosestTail = (tails: ReadonlyArray<ITail>): ITail =>
     tails.reduce((closest, tail) => {
@@ -195,17 +192,8 @@ class Pause implements Action {
   apply(s: State): State {
     return {
       ...s,
+      tails: s.tails.map((tail) => tail.setUnclicked()),
       paused: this.isPaused,
-    };
-  }
-}
-
-class Restart implements Action {
-  apply(s: State): State {
-    return {
-      ...s,
-      restart: true,
-      gameEnd: false,
     };
   }
 }
