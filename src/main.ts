@@ -55,8 +55,16 @@ import {
   concatWith,
   shareReplay,
   withLatestFrom,
+  tap,
 } from "rxjs/operators";
 
+/**
+ * Main game function. Initialises all observable streams.
+ *
+ * @param csvContents Song data in CSV format
+ * @param samples Tone.js sampler instruments
+ * @param gameSpeed The speed of the game
+ */
 export function main(
   csvContents: string,
   samples: { [key: string]: Tone.Sampler },
@@ -65,6 +73,7 @@ export function main(
   const csvArray = parseCSV(csvContents);
   const minPitch = getMinPitch(csvArray);
   const maxPitch = getMaxPitch(csvArray);
+
   const finalNote = csvArray[csvArray.length - 1];
   // 2000ms is just an arbitrary number to try to make sure the game ends after the last note has completed
   const finalDelay = finalNote.end - finalNote.start + 2000;
@@ -79,11 +88,11 @@ export function main(
       filter(({ repeat }) => !repeat),
     );
 
-  // shareReplay(1) is crucial here because applying operators like filter and map
-  // on pause$ creates internal subscriptions. Without shareReplay, each of these
-  // would only receive the initial value (false) due to startWith(false), leading to
-  // incorrect behavior. shareReplay(1) ensures the latest value is replayed to all
-  // subscribers, maintaining the correct pause state.
+  // shareReplay(1) is crucial here because applying operators like filter and
+  // map on pause$ creates internal subscriptions. Without shareReplay, each of
+  // these would only receive the initial value (false) due to startWith(false),
+  // leading to incorrect behavior. shareReplay(1) ensures the latest value is
+  // replayed to all subscribers, maintaining the correct pause state.
   const pause$ = merge(
     key$("keydown", "KeyP").pipe(map(() => true)),
     key$("keydown", "KeyO").pipe(map(() => false)),
@@ -99,6 +108,7 @@ export function main(
       key$(e, key).pipe(
         withLatestFrom(pause$),
         filter(([_, isPaused]) => !isPaused),
+        // Generate a random seed for each key press
         scan((acc, _) => RNG.hash(acc), RNG.hash(Constants.SEEDS[key])),
         map((seed) => f(key, seed)),
       );
@@ -115,11 +125,11 @@ export function main(
   // concatMap ensures that each value is processed one at a time in order,
   // and delay adds a consistent interval between the values, preventing them
   // from being emitted at the same time after resuming.
-  const tick$ = interval(Constants.TICK_INTERVAL).pipe(
+  const tick$ = interval(Constants.TICK_RATE_MS).pipe(
     concatMap(() =>
       of(null).pipe(
         delayWhen(() => pass$),
-        delay(Constants.TICK_INTERVAL),
+        delay(Constants.TICK_RATE_MS),
         map(() => new Tick()),
       ),
     ),
@@ -194,7 +204,7 @@ export function main(
 }
 
 /**
- * Highlight the keys when they are pressed
+ * Highlight the keys when they are pressed.
  *
  * @see https://stackblitz.com/edit/asteroids2023
  */
@@ -220,15 +230,16 @@ const showKeys = () => {
   showKey("KeyR");
 };
 
+// Create an observable that emits the game speed when the corresponding button is clicked
 const button$ = (
   buttonId: string,
   speed: GameSpeedType,
 ): Observable<GameSpeedType> => {
   const button = document.getElementById(buttonId);
+  // Return an empty observable if the button is not found
   return button ? fromEvent(button, "click").pipe(map(() => speed)) : of();
 };
 
-// Observables that emit the game speed when the corresponding button is clicked
 const slowButton$ = button$("slowButton", "slow");
 const defaultButton$ = button$("defaultButton", "default");
 const fastButton$ = button$("fastButton", "fast");
