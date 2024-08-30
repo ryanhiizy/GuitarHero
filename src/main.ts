@@ -55,6 +55,7 @@ import {
   concatWith,
   shareReplay,
   withLatestFrom,
+  distinctUntilChanged,
 } from "rxjs/operators";
 
 /**
@@ -95,7 +96,7 @@ export function main(
   const pause$ = merge(
     key$("keydown", "KeyP").pipe(map(() => true)),
     key$("keydown", "KeyO").pipe(map(() => false)),
-  ).pipe(startWith(false), shareReplay(1));
+  ).pipe(startWith(false), distinctUntilChanged(), shareReplay(1));
 
   const pauseAction$ = pause$.pipe(map((isPaused) => new Pause(isPaused)));
   const pass$ = pause$.pipe(filter((isPaused) => !isPaused));
