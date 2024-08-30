@@ -109,8 +109,8 @@ type State = Readonly<{
   circles: ReadonlyArray<ICircle>;
   playableCircles: ReadonlyArray<PlayableCircles>;
   bgCircles: ReadonlyArray<IBackgroundCircle>;
-  random: ReadonlyArray<RandomNote>;
   clickedCircles: ReadonlyArray<PlayableCircles>;
+  random: ReadonlyArray<RandomNote>;
 
   exit: ReadonlyArray<PlayableCircles>;
   exitTails: ReadonlyArray<ITail>;
