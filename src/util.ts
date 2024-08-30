@@ -20,8 +20,23 @@ export {
 };
 
 import * as Tone from "tone";
-import { BackgroundCircle, HitCircle, HoldCircle, StarCircle, Tail } from "./circle";
-import { Note, Constants, ICircle, ITail, RandomNote, GroupedNote, GameSpeedType, Star } from "./types";
+import {
+  Tail,
+  HitCircle,
+  HoldCircle,
+  StarCircle,
+  BackgroundCircle,
+} from "./circle";
+import {
+  Star,
+  Note,
+  ITail,
+  ICircle,
+  Constants,
+  RandomNote,
+  GroupedNote,
+  GameSpeedType,
+} from "./types";
 
 /**
  * A random number generator which provides two pure functions
@@ -46,7 +61,7 @@ abstract class RNG {
   public static hash = (seed: number) => (RNG.a * seed + RNG.c) % RNG.m;
 
   /**
-   * Takes hash value and scales it to the specified range [lower, upper]
+   * Takes hash value and scales it to the specified range [lower, upper].
    * @param hash
    * @param lower
    * @param upper
@@ -70,11 +85,15 @@ const generateRandomDurationNote = (note: Note): Note => ({
   end: note.start + scaleToDuration(RNG.hash(getID(note))),
 });
 
-const generateRandomNote = (seed: number, samples: { [key: string]: Tone.Sampler }): RandomNote => {
+const generateRandomNote = (
+  seed: number,
+  samples: { [key: string]: Tone.Sampler },
+): RandomNote => {
   const seed1 = RNG.hash(seed);
   const seed2 = RNG.hash(seed1);
   const seed3 = RNG.hash(seed2);
-  const randomInstrument = Constants.INSTRUMENTS[Math.round(scaleToInstrument(seed1))];
+  const randomInstrument =
+    Constants.INSTRUMENTS[Math.round(scaleToInstrument(seed1))];
   return {
     note: {
       userPlayed: false,
@@ -97,9 +116,9 @@ const playRandomNote = (randomNote: RandomNote) => {
   );
 };
 
-// Check if the combo is a multiple of the treshold and increment the multiplier
 const calculateMultiplier = (combo: number, multiplier: number): number =>
-  combo > 0 && combo % Constants.COMBO_TRESHOLD === 0
+  // Check if the combo is a multiple of the treshold and increment the multiplier
+  combo >= Constants.COMBO_TRESHOLD && combo % Constants.COMBO_TRESHOLD === 0
     ? parseFloat((multiplier + Constants.MULTIPLIER_INCREMENT).toFixed(1))
     : multiplier;
 
@@ -107,25 +126,33 @@ const calculateMultiplier = (combo: number, multiplier: number): number =>
 const getPlayablePitches = (csv: ReadonlyArray<Note>): ReadonlyArray<number> =>
   csv.filter((note) => note.userPlayed).map((note) => note.pitch);
 
-const getMinPitch = (csv: ReadonlyArray<Note>): number => Math.min(...getPlayablePitches(csv));
+const getMinPitch = (csv: ReadonlyArray<Note>): number =>
+  Math.min(...getPlayablePitches(csv));
 
-const getMaxPitch = (csv: ReadonlyArray<Note>): number => Math.max(...getPlayablePitches(csv));
+const getMaxPitch = (csv: ReadonlyArray<Note>): number =>
+  Math.max(...getPlayablePitches(csv));
 
 // The columns are evenly distributed between the min and max pitch of user played notes
-const getColumn = (minPitch: number, maxPitch: number, pitch: number): number => {
-  const columnSize = (maxPitch - minPitch) / Constants.NUM_COLUMNS;
-  const column = Math.min(Constants.NUM_COLUMNS - 1, Math.floor((pitch - minPitch) / columnSize));
-  return column;
+const getColumn = (
+  minPitch: number,
+  maxPitch: number,
+  pitch: number,
+): number => {
+  const columnSize = (maxPitch - minPitch) / Constants.NUM_OF_COLUMNS;
+  const column = Math.floor((pitch - minPitch) / columnSize);
+  return column === Constants.NUM_OF_COLUMNS ? column - 1 : column;
 };
 
-const getID = (note: Note) => parseFloat(`${note.velocity}${note.pitch}${note.start}`);
+const getID = (note: Note) =>
+  parseFloat(`${note.velocity}${note.pitch}${note.start}`);
 
 const parseCSV = (csvContents: string): ReadonlyArray<Note> => {
   return csvContents.trim().split("\n").slice(1).map(parseLineToNote);
 };
 
 const parseLineToNote = (line: string): Note => {
-  const [userPlayed, instrumentName, velocity, pitch, start, end] = line.split(",");
+  const [userPlayed, instrumentName, velocity, pitch, start, end] =
+    line.split(",");
   return {
     userPlayed: userPlayed === "True",
     instrumentName,
@@ -138,11 +165,12 @@ const parseLineToNote = (line: string): Note => {
 
 /**
  * Before passing the notes to the note$ stream, they have to be grouped.
- * This is because to implement the dynamic speed of the song and pause
+ * This is because to implement the dynamic speed of the game and pause
  * functionality, concatMap has to be used. However, concatMap causes the
  * notes which are supposed to be played at the same time to be played out
- * of sync. To prevent this, the notes are grouped by their start time and
- * the relative start times are calculated for concatMap to work properly.
+ * of sync. To prevent this, the notes are grouped by their start time to
+ * be played in parallel with mergeMap and the relative start times are
+ * calculated for concatMap to apply the delay between notes.
  */
 
 // Group notes by their start time
@@ -150,16 +178,21 @@ const parseLineToNote = (line: string): Note => {
 // 0: [Note, Note]
 // 300: [Note, Note]
 // 600: [Note, Note]
-const getGroupedNotesHelper = (csvArray: ReadonlyArray<Note>): Readonly<{ [key: string]: ReadonlyArray<Note> }> =>
-  csvArray.reduce<Readonly<{ [key: string]: ReadonlyArray<Note> }>>((acc, note) => {
-    const startTime = note.start * Constants.S_TO_MS;
-    const existingNotes = acc[startTime] || [];
+const getGroupedNotesHelper = (
+  csvArray: ReadonlyArray<Note>,
+): Readonly<{ [key: string]: ReadonlyArray<Note> }> =>
+  csvArray.reduce<Readonly<{ [key: string]: ReadonlyArray<Note> }>>(
+    (acc, note) => {
+      const startTime = (note.start * 1000).toFixed(3);
+      const existingNotes = acc[startTime] || [];
 
-    return {
-      ...acc,
-      [startTime]: [...existingNotes, note],
-    };
-  }, {});
+      return {
+        ...acc,
+        [startTime]: [...existingNotes, note],
+      };
+    },
+    {},
+  );
 
 // Get the grouped notes and calculate the relative start times
 // Format: [relativeStartTime, ...notes] (groups may have equal relative start times so it has to be an array)
@@ -167,7 +200,9 @@ const getGroupedNotesHelper = (csvArray: ReadonlyArray<Note>): Readonly<{ [key: 
 // [0, Note, Note]
 // [300, Note, Note]
 // [300, Note, Note] (600 - 300)
-const getGroupedNotes = (csvArray: ReadonlyArray<Note>): ReadonlyArray<GroupedNote> => {
+const getGroupedNotes = (
+  csvArray: ReadonlyArray<Note>,
+): ReadonlyArray<GroupedNote> => {
   const groupedNotes = getGroupedNotesHelper(csvArray);
 
   return Object.entries(groupedNotes).reduce<{
@@ -186,7 +221,10 @@ const getGroupedNotes = (csvArray: ReadonlyArray<Note>): ReadonlyArray<GroupedNo
 };
 
 // Calculates the delay to be added or subtracted between notes to match the initial game speed
-const calculateDelay = (csvArray: ReadonlyArray<Note>, gameSpeed: GameSpeedType): number => {
+const calculateDelay = (
+  csvArray: ReadonlyArray<Note>,
+  gameSpeed: GameSpeedType,
+): number => {
   const factor = Constants.SPEED_FACTORS[gameSpeed];
   const firstNote = csvArray[0];
   const lastNote = csvArray[csvArray.length - 1];
@@ -198,7 +236,10 @@ const calculateDelay = (csvArray: ReadonlyArray<Note>, gameSpeed: GameSpeedType)
 
 // Calculates the factor to be multiplied with the duration of the notes
 // to match the current game speed based on the current delay
-const calculateDelayFactor = (delay: number, csvArray: ReadonlyArray<Note>): number => {
+const calculateDelayFactor = (
+  delay: number,
+  csvArray: ReadonlyArray<Note>,
+): number => {
   const firstNote = csvArray[0];
   const lastNote = csvArray[csvArray.length - 1];
 
@@ -215,11 +256,6 @@ const noteAfterDelay = (factor: number, note: Note): Note => ({
   end: note.start + (note.end - note.start) * factor,
 });
 
-const clearCanvas = () => {
-  const circles = document.querySelectorAll(".playable");
-  circles.forEach((circle) => circle.remove());
-};
-
 const createCircle = (
   minPitch: number,
   maxPitch: number,
@@ -234,24 +270,35 @@ const createCircle = (
   const id = getID(updatedNote);
   const sampler = samples[updatedNote.instrumentName];
   const column = getColumn(minPitch, maxPitch, updatedNote.pitch);
-  const duration = (updatedNote.end - updatedNote.start) * Constants.S_TO_MS;
+  const duration = (updatedNote.end - updatedNote.start) * 1000;
   const isStar = RNG.scale(0, 1)(RNG.hash(id)) < Star.CHANCE;
 
   if (!updatedNote.userPlayed) {
     return new BackgroundCircle(id, updatedNote, sampler);
   }
 
-  if (duration > Constants.MIN_HOLD_DURATION) {
+  if (duration > Constants.HOLD_CIRCLE_TRESHOLD) {
     const holdCircle = new HoldCircle(id, updatedNote, column, sampler);
-    const y1 = holdCircle.cy - (duration * Constants.PIXELS_PER_TICK) / Constants.TICK_INTERVAL;
+    // Calculate length of the tail
+    const y1 =
+      holdCircle.cy -
+      (duration * Constants.PIXELS_PER_TICK) / Constants.TICK_RATE_MS;
     return new Tail(`${id}t`, holdCircle.cx, y1, holdCircle.cy, holdCircle);
   }
 
-  return isStar ? new StarCircle(id, updatedNote, column, sampler) : new HitCircle(id, updatedNote, column, sampler);
+  return isStar
+    ? new StarCircle(id, updatedNote, column, sampler)
+    : new HitCircle(id, updatedNote, column, sampler);
+};
+
+const clearCanvas = () => {
+  const circles = document.querySelectorAll(".playable");
+  circles.forEach((circle) => circle.remove());
 };
 
 /**
- * Composable not: invert boolean result of given function
+ * Composable not: invert boolean result of given function.
+ *
  * @param f a function returning boolean
  * @param x the value that will be tested with f
  *
@@ -263,7 +310,8 @@ const not =
     !f(x);
 
 /**
- * set a number of attributes on an Element at once
+ * set a number of attributes on an Element at once.
+ *
  * @param e the Element
  * @param o a property bag
  *
@@ -274,9 +322,12 @@ const attr = (e: Element, o: { [p: string]: unknown }) => {
 };
 
 /**
- * Type guard for use in filters
+ * Type guard for use in filters.
+ *
  * @param input something that might be null or undefined
  *
  * @see https://stackblitz.com/edit/asteroids2023
  */
-const isNotNullOrUndefined = <T extends object>(input: null | undefined | T): input is T => input != null;
+const isNotNullOrUndefined = <T extends object>(
+  input: null | undefined | T,
+): input is T => input != null;
