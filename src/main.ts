@@ -74,8 +74,8 @@ export function main(
   const maxPitch = getMaxPitch(csvArray);
 
   const finalNote = csvArray[csvArray.length - 1];
-  // 2000ms is just an arbitrary number to try to make sure the game ends after the last note has completed
-  const finalDelay = finalNote.end - finalNote.start + 2000;
+  // 1000ms is just an arbitrary number to try to make sure the game ends after the last note has completed
+  const finalDelay = finalNote.end - finalNote.start + 1000;
 
   // See function documentation for more information
   const groupedNotes = getGroupedNotes(csvArray);
