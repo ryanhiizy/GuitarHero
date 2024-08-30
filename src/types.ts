@@ -224,6 +224,6 @@ interface ITail extends Action, Tickable {
 
   stopNote(): void;
   isClicked(): boolean;
-  setUnclicked(): ITail;
+  setClicked(isClicked: boolean): ITail;
   updateBodyView(rootSVG: HTMLElement): void;
 }
