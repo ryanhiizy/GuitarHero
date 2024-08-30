@@ -1,4 +1,4 @@
-export { Constants, Viewport, NoteConstants, Star };
+export { Star, Constants, Viewport, NoteConstants };
 export type {
   Note,
   Event,
@@ -24,27 +24,38 @@ import * as Tone from "tone";
 /** Constants */
 
 const Constants = {
-  TICK_INTERVAL: 5,
+  TICK_RATE_MS: 5,
   SONG_NAME: "SleepingBeauty",
   MAX_MIDI_VELOCITY: 127,
-  NUM_COLUMNS: 4,
+  COLORS: ["green", "red", "blue", "yellow"],
+
   COLUMN_WIDTH: 20,
-  S_TO_MS: 1000,
-  NOTE_EXPIRE_Y: 430,
+  NUM_OF_COLUMNS: 4,
+  COLUMN_KEYS: ["KeyA", "KeyS", "KeyK", "KeyL"],
+
   TARGET_Y: 350,
+  EXPIRED_Y: 430,
   CLICK_RANGE_Y: 50,
+
   SCORE_PER_HIT: 10,
   MULTIPLIER_INCREMENT: 0.2,
-  COMBO_TRESHOLD: 10,
-  MIN_HOLD_DURATION: 1000,
 
-  // Change to 1000 and 0.7 if too fast
-  NOTE_TRAVEL_TIME: 500,
+  COMBO_TRESHOLD: 10,
+  HOLD_CIRCLE_TRESHOLD: 1000,
+
+  // Change to 1000 and 0.7 if the circles are too fast
+  TRAVEL_TIME: 500,
   PIXELS_PER_TICK: 3.5,
 
-  NOTE_COLORS: ["green", "red", "blue", "yellow"],
-  COLUMN_KEYS: ["KeyA", "KeyS", "KeyK", "KeyL"],
-  INSTRUMENTS: ["bass-electric", "flute", "piano", "saxophone", "trombone", "trumpet", "violin"],
+  INSTRUMENTS: [
+    "bass-electric",
+    "flute",
+    "piano",
+    "saxophone",
+    "trombone",
+    "trumpet",
+    "violin",
+  ],
   SEEDS: {
     KeyA: 999,
     KeyS: 888,
@@ -53,7 +64,7 @@ const Constants = {
   },
   SPEED_FACTORS: {
     slow: 0.5,
-    default: 1,
+    default: 0,
     fast: -0.5,
   },
 } as const;
@@ -125,26 +136,37 @@ type RandomNote = Readonly<{
   sampler: Tone.Sampler;
 }>;
 
-type PlayableCircles = IPlayableCircle<IHitCircle> | IPlayableCircle<IHoldCircle>;
+type PlayableCircles =
+  | IPlayableCircle<IHitCircle>
+  | IPlayableCircle<IHoldCircle>
+  | IPlayableCircle<IStarCircle>;
+
+/**
+ * An array of notes grouped by their relative start time.
+ */
 type GroupedNote = [relativeStartTime: number, ...notes: ReadonlyArray<Note>];
+
 type GameSpeedType = "slow" | "default" | "fast";
 
 /** Interfaces */
 
 /**
- * Tickable objects modify state on each tick
+ * Actions modify state.
+ */
+interface Action {
+  apply(s: State): State;
+}
+
+/**
+ * Tickable objects modify state on each tick.
  */
 interface Tickable {
   tick(s: State): State;
 }
 
 /**
- * Actions modify state
+ * Circles are the main objects that represent notes in the game.
  */
-interface Action {
-  apply(s: State): State;
-}
-
 interface ICircle extends Action, Tickable {
   id: number;
   note: Note;
@@ -153,6 +175,9 @@ interface ICircle extends Action, Tickable {
   playNote(): void;
 }
 
+/**
+ * Playable circles are circles that can be clicked by the user.
+ */
 interface IPlayableCircle<T extends IPlayableCircle<T>> extends ICircle {
   cx: number;
   cy: number;
@@ -160,22 +185,36 @@ interface IPlayableCircle<T extends IPlayableCircle<T>> extends ICircle {
   isClicked: boolean;
 
   onClick(s: State): State;
-  updateStateWithScore(s: State): State;
   updateBodyView(rootSVG: HTMLElement): void;
   setRandomDuration(): T;
   setClicked(isClicked: boolean): T;
 }
 
+/**
+ * Hit circles are circles that must be clicked at the right time.
+ */
 interface IHitCircle extends IPlayableCircle<IHitCircle> {}
 
+/**
+ * Hold circles are circles that must be held down for a certain duration.
+ */
 interface IHoldCircle extends IPlayableCircle<IHoldCircle> {}
 
+/**
+ * Star circles are circles that speed up the game when clicked.
+ */
 interface IStarCircle extends IPlayableCircle<IStarCircle> {}
 
+/**
+ * Background circles are not displayed and only serve to play notes.
+ */
 interface IBackgroundCircle extends ICircle {
   timePassed: number;
 }
 
+/**
+ * Tails are the lines that connect to hold circles.
+ */
 interface ITail extends Action, Tickable {
   id: string;
   x: number;
@@ -185,6 +224,6 @@ interface ITail extends Action, Tickable {
 
   stopNote(): void;
   isClicked(): boolean;
-  setClicked(isClicked: boolean): ITail;
+  setUnclicked(): ITail;
   updateBodyView(rootSVG: HTMLElement): void;
 }
