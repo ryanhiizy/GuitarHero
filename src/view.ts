@@ -1,6 +1,6 @@
 export { updateView };
 
-import { Constants, State, Viewport } from "./types";
+import { Constants, Star, State, Viewport } from "./types";
 import { attr, isNotNullOrUndefined, playRandomNote } from "./util";
 
 /**
@@ -37,7 +37,7 @@ const updateView = (s: State): void => {
   svg.setAttribute("width", `${Viewport.CANVAS_WIDTH}`);
 
   const remainingStarTime = Math.ceil(
-    (Constants.STAR_MAX_DURATION - s.starDuration) / 1000,
+    (Star.MAX_DURATION - s.starDuration) / 1000,
   );
 
   // Remaining star time is not 0s when the star phase is inactive so we need to check for that
@@ -53,7 +53,7 @@ const updateView = (s: State): void => {
 
   // Play background circles that have reached the end of their travel time
   s.bgCircles
-    .filter((circle) => circle.timePassed === Constants.TRAVEL_MS)
+    .filter((circle) => circle.timePassed === Constants.TRAVEL_TIME)
     .forEach((circle) => circle.playNote());
 
   s.random.forEach(playRandomNote);
