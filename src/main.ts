@@ -1,100 +1,159 @@
-/**
- * Inside this file you will use the classes and functions from rx.js
- * to add visuals to the svg element in index.html, animate them, and make them interactive.
- *
- * Study and complete the tasks in observable exercises first to get ideas.
- *
- * Course Notes showing Asteroids in FRP: https://tgdwyer.github.io/asteroids/
- *
- * You will be marked on your functional programming style
- * as well as the functionality that you implement.
- *
- * Document your code!
- */
-
 import "./style.css";
 import * as Tone from "tone";
 import { updateView } from "./view";
 import { SampleLibrary } from "./tonejs-instruments";
-import { Constants, ClickKey, ExtraKey, Event, State, Action, Note, GameSpeedType } from "./types";
-import { parseCSV, getGroupedNotes, getMinPitch, getMaxPitch, createCircle, RNG, clearCanvas, getDelay } from "./util";
-import { initialState, Tick, reduceState, ClickCircle, GameEnd, Pause, ReleaseCircle, GameSpeed } from "./state";
-import { from, fromEvent, interval, merge, Observable, of, Subscription, timer } from "rxjs";
+import {
+  Event,
+  State,
+  Action,
+  ClickKey,
+  ExtraKey,
+  Constants,
+  GameSpeedType,
+} from "./types";
+import {
+  Tick,
+  Pause,
+  GameEnd,
+  GameSpeed,
+  reduceState,
+  ClickCircle,
+  initialState,
+  ReleaseCircle,
+} from "./state";
+import {
+  RNG,
+  parseCSV,
+  getMinPitch,
+  getMaxPitch,
+  clearCanvas,
+  createCircle,
+  calculateDelay,
+  getGroupedNotes,
+} from "./util";
+import {
+  of,
+  from,
+  merge,
+  timer,
+  interval,
+  fromEvent,
+  Observable,
+  Subscription,
+} from "rxjs";
 import {
   map,
-  filter,
   scan,
-  mergeMap,
+  take,
   delay,
+  filter,
+  mergeMap,
   concatMap,
   delayWhen,
-  concatWith,
-  withLatestFrom,
-  tap,
   startWith,
-  shareReplay,
   switchMap,
-  mergeWith,
-  share,
-  take,
+  concatWith,
+  shareReplay,
+  withLatestFrom,
 } from "rxjs/operators";
 
-/**
- * This is the function called on page load. Your main game loop
- * should be called here.
- */
-export function main(csvContents: string, samples: { [key: string]: Tone.Sampler }, gameSpeed: GameSpeedType): void {
+export function main(
+  csvContents: string,
+  samples: { [key: string]: Tone.Sampler },
+  gameSpeed: GameSpeedType,
+): void {
   const csvArray = parseCSV(csvContents);
   const minPitch = getMinPitch(csvArray);
   const maxPitch = getMaxPitch(csvArray);
-  const groupedNotes = getGroupedNotes(csvArray);
-  const gameDelay = getDelay(csvArray, gameSpeed);
+  const finalNote = csvArray[csvArray.length - 1];
+  // 2000ms is just an arbitrary number to try to make sure the game ends after the last note has completed
+  const finalDelay = finalNote.end - finalNote.start + 2000;
 
-  const key$ = (e: "keydown" | "keyup", k: ClickKey | ExtraKey) =>
+  // See function documentation for more information
+  const groupedNotes = getGroupedNotes(csvArray);
+  const gameDelay = calculateDelay(csvArray, gameSpeed);
+
+  const key$ = (e: Event, k: ClickKey | ExtraKey) =>
     fromEvent<KeyboardEvent>(document, e).pipe(
       filter(({ code }) => code === k),
       filter(({ repeat }) => !repeat),
     );
 
+  // shareReplay(1) is crucial here because applying operators like filter and map
+  // on pause$ creates internal subscriptions. Without shareReplay, each of these
+  // would only receive the initial value (false) due to startWith(false), leading to
+  // incorrect behavior. shareReplay(1) ensures the latest value is replayed to all
+  // subscribers, maintaining the correct pause state.
   const pause$ = merge(
     key$("keydown", "KeyP").pipe(map(() => true)),
     key$("keydown", "KeyO").pipe(map(() => false)),
   ).pipe(startWith(false), shareReplay(1));
 
+  const pauseAction$ = pause$.pipe(map((isPaused) => new Pause(isPaused)));
   const pass$ = pause$.pipe(filter((isPaused) => !isPaused));
 
-  const pauseAction$ = pause$.pipe(map((isPaused) => new Pause(isPaused)));
+  const keyAction$ =
+    (e: Event) =>
+    (f: (code: ClickKey, seed: number) => Action) =>
+    (key: ClickKey) =>
+      key$(e, key).pipe(
+        withLatestFrom(pause$),
+        filter(([_, isPaused]) => !isPaused),
+        scan((acc, _) => RNG.hash(acc), RNG.hash(Constants.SEEDS[key])),
+        map((seed) => f(key, seed)),
+      );
 
-  const keyAction$ = (e: "keydown" | "keyup") => (f: (code: ClickKey, seed: number) => Action) => (key: ClickKey) =>
-    key$(e, key).pipe(
-      withLatestFrom(pause$),
-      filter(([_, isPaused]) => !isPaused),
-      scan((acc, _) => RNG.hash(acc), RNG.hash(Constants.SEED[key])),
-      map((seed) => f(key, seed)),
-    );
-
-  const keydown$ = keyAction$("keydown")((code, seed) => new ClickCircle(code, seed, samples));
+  const keydown$ = keyAction$("keydown")(
+    (code, seed) => new ClickCircle(code, seed, samples),
+  );
   const keyup$ = keyAction$("keyup")((code) => new ReleaseCircle(code));
 
-  const finalNote = csvArray[csvArray.length - 1];
-  const finalDelay = finalNote.end - finalNote.start + 2000;
-
   const gameSpeed$ = of(gameDelay).pipe(map((delay) => new GameSpeed(delay)));
+
+  // delayWhen delays the emission of each value until pass$ emits a value,
+  // effectively pausing the stream when the game is paused.
+  // concatMap ensures that each value is processed one at a time in order,
+  // and delay adds a consistent interval between the values, preventing them
+  // from being emitted at the same time after resuming.
+  const tick$ = interval(Constants.TICK_INTERVAL).pipe(
+    concatMap(() =>
+      of(null).pipe(
+        delayWhen(() => pass$),
+        delay(Constants.TICK_INTERVAL),
+        map(() => new Tick()),
+      ),
+    ),
+  );
 
   const note$ = from(groupedNotes).pipe(
     concatMap(([relativeStartTime, ...notes]) =>
       of(relativeStartTime).pipe(
+        // Same pause logic as above except delayWhen is used in place of delay
         delayWhen(() => pass$),
         withLatestFrom(state$),
-        delayWhen(([relativeStartTime, state]) => timer(relativeStartTime + state.delay)),
+        // This delayWhen is used to provide a dynamic delay between each note
+        delayWhen(([relativeStartTime, state]) =>
+          timer(relativeStartTime + state.delay),
+        ),
+        // mergeMap to create circles for the group of notes in parallel
         mergeMap(() =>
           from(notes).pipe(
             withLatestFrom(state$),
-            map(([note, state]) => createCircle(minPitch, maxPitch, samples, state.delay, csvArray, note)),
+            map(([note, state]) =>
+              createCircle(
+                minPitch,
+                maxPitch,
+                samples,
+                state.delay,
+                csvArray,
+                note,
+              ),
+            ),
           ),
         ),
       ),
     ),
+    // After all notes have been processed, emit a GameEnd action
     concatWith(
       timer(finalDelay).pipe(
         delayWhen(() => pass$),
@@ -104,20 +163,11 @@ export function main(csvContents: string, samples: { [key: string]: Tone.Sampler
     ),
   );
 
-  const tick$ = interval(Constants.TICK_RATE_MS).pipe(
-    concatMap((tick) =>
-      of(tick).pipe(
-        delayWhen(() => pass$),
-        delay(Constants.TICK_RATE_MS),
-        map(() => new Tick()),
-      ),
-    ),
-  );
-
   const action$: Observable<Action> = merge(
     gameSpeed$,
     tick$,
     note$,
+    pauseAction$,
     keydown$("KeyA"),
     keydown$("KeyS"),
     keydown$("KeyK"),
@@ -126,20 +176,15 @@ export function main(csvContents: string, samples: { [key: string]: Tone.Sampler
     keyup$("KeyS"),
     keyup$("KeyK"),
     keyup$("KeyL"),
-    pauseAction$,
   );
 
   const state$: Observable<State> = key$("keydown", "KeyR").pipe(
-    startWith(null),
+    startWith(null), // To trigger switchMap immediately
     switchMap(() =>
-      action$.pipe(
-        // tap(console.log),
-        scan(reduceState, initialState),
-        // tap((s) => console.log(performance.now(), s)),
-        startWith(initialState),
-      ),
+      // startWith provides an initial state for subscription to determine the start of the game
+      action$.pipe(scan(reduceState, initialState), startWith(initialState)),
     ),
-    shareReplay(1),
+    shareReplay(1), // Same reasoning as above
   );
 
   const subscription: Subscription = state$.subscribe((s) => {
@@ -148,12 +193,20 @@ export function main(csvContents: string, samples: { [key: string]: Tone.Sampler
   });
 }
 
-function showKeys() {
+/**
+ * Highlight the keys when they are pressed
+ *
+ * @see https://stackblitz.com/edit/asteroids2023
+ */
+const showKeys = () => {
   function showKey(k: ClickKey | ExtraKey) {
     const arrowKey = document.getElementById(k);
     // getElement might be null, in this case return without doing anything
     if (!arrowKey) return;
-    const o = (e: Event) => fromEvent<KeyboardEvent>(document, e).pipe(filter(({ code }) => code === k));
+    const o = (e: Event) =>
+      fromEvent<KeyboardEvent>(document, e).pipe(
+        filter(({ code }) => code === k),
+      );
     o("keydown").subscribe((e) => arrowKey.classList.add("highlight"));
     o("keyup").subscribe((_) => arrowKey.classList.remove("highlight"));
   }
@@ -165,42 +218,39 @@ function showKeys() {
   showKey("KeyP");
   showKey("KeyO");
   showKey("KeyR");
-}
+};
 
-// Function to create button observables
-function createButtonObservable(buttonId: string, speed: GameSpeedType): Observable<GameSpeedType> {
+const button$ = (
+  buttonId: string,
+  speed: GameSpeedType,
+): Observable<GameSpeedType> => {
   const button = document.getElementById(buttonId);
   return button ? fromEvent(button, "click").pipe(map(() => speed)) : of();
-}
+};
 
-// Create observables for each button
-const slowButton$ = createButtonObservable("slowButton", "slow");
-const defaultButton$ = createButtonObservable("defaultButton", "default");
-const fastButton$ = createButtonObservable("fastButton", "fast");
+// Observables that emit the game speed when the corresponding button is clicked
+const slowButton$ = button$("slowButton", "slow");
+const defaultButton$ = button$("defaultButton", "default");
+const fastButton$ = button$("fastButton", "fast");
 
-// Merge button observables
-const gameStart$ = merge(slowButton$, defaultButton$, fastButton$).pipe(take(1));
-
-// The following simply runs your main function on window load.  Make sure to leave it in place.
-// You should not need to change this, beware if you are.
+const gameStart$ = merge(slowButton$, defaultButton$, fastButton$).pipe(
+  take(1),
+);
 
 if (typeof window !== "undefined") {
   // Load in the instruments and then start your game!
   const samples = SampleLibrary.load({
-    instruments: ["bass-electric", "flute", "piano", "saxophone", "trombone", "trumpet", "violin"], // SampleLibrary.list,
+    instruments: [
+      "bass-electric",
+      "flute",
+      "piano",
+      "saxophone",
+      "trombone",
+      "trumpet",
+      "violin",
+    ], // SampleLibrary.list,
     baseUrl: "samples/",
   });
-
-  // const startGame = (contents: string) => {
-  //   document.body.addEventListener(
-  //     "mousedown",
-  //     function () {
-  //       main(contents, samples);
-  //       showKeys();
-  //     },
-  //     { once: true },
-  //   );
-  // };
 
   const { protocol, hostname, port } = new URL(import.meta.url);
   const baseUrl = `${protocol}//${hostname}${port ? `:${port}` : ""}`;
@@ -214,7 +264,6 @@ if (typeof window !== "undefined") {
     fetch(`${baseUrl}/assets/${Constants.SONG_NAME}.csv`)
       .then((response) => response.text())
       .then((csvContents) => {
-        // Subscribe to the game start observable
         gameStart$.subscribe((speed) => {
           main(csvContents, samples, speed);
           showKeys();

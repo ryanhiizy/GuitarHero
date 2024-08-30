@@ -1,21 +1,21 @@
 export { Circle, HitCircle, Tail, BackgroundCircle, PlayableCircle, HoldCircle, StarCircle };
 
 import * as Tone from "tone";
+import { attr, calculateMultiplier, generateRandomDurationNote } from "./util";
 import {
-  Constants,
   Note,
+  Star,
   State,
-  ICircle,
-  IBackgroundCircle,
-  Action,
-  NoteConstants,
-  IHitCircle,
   ITail,
-  IPlayableCircle,
+  ICircle,
+  Constants,
+  IHitCircle,
   IHoldCircle,
   IStarCircle,
+  NoteConstants,
+  IPlayableCircle,
+  IBackgroundCircle,
 } from "./types";
-import { attr, calculateMultiplier, generateRandomDurationNote } from "./util";
 
 abstract class Circle implements ICircle {
   constructor(
@@ -25,7 +25,6 @@ abstract class Circle implements ICircle {
   ) {}
 
   apply(s: State): State {
-    // console.log(this.note.start);
     return {
       ...s,
       circles: [...s.circles, this],
@@ -97,7 +96,20 @@ abstract class PlayableCircle<T extends IPlayableCircle<T>> extends Circle {
   }
 
   isActive(): boolean {
-    return this.cy <= Constants.EXPIRED_Y && !this.isClicked;
+    return this.cy <= Constants.NOTE_EXPIRE_Y && !this.isClicked;
+  }
+
+  updateStateWithScore(s: State): State {
+    const newCombo = s.combo + 1;
+    const newMultiplier = calculateMultiplier(newCombo, s.multiplier);
+    const newScore = s.score + Constants.SCORE_PER_HIT * newMultiplier;
+
+    return {
+      ...s,
+      score: newScore,
+      multiplier: newMultiplier,
+      combo: newCombo,
+    };
   }
 
   abstract onClick(s: State): State;
@@ -119,15 +131,7 @@ class HitCircle extends PlayableCircle<IHitCircle> implements IHitCircle {
   }
 
   onClick(s: State): State {
-    const newCombo = s.combo + 1;
-    const newMultiplier = calculateMultiplier(newCombo, s.multiplier);
-    const newScore = s.score + Constants.SCORE_PER_HIT * newMultiplier;
-    return {
-      ...s,
-      score: newScore,
-      multiplier: newMultiplier,
-      combo: newCombo,
-    };
+    return this.updateStateWithScore(s);
   }
 
   moveCircle(): IHitCircle {
@@ -136,7 +140,7 @@ class HitCircle extends PlayableCircle<IHitCircle> implements IHitCircle {
       this.note,
       this.column,
       this.sampler,
-      this.cy + Constants.TRAVEL_Y_PER_TICK,
+      this.cy + Constants.PIXELS_PER_TICK,
       this.isClicked,
     );
   }
@@ -148,7 +152,6 @@ class HitCircle extends PlayableCircle<IHitCircle> implements IHitCircle {
   }
 
   setClicked(isClicked: boolean): IHitCircle {
-    console.log("setClicked", this, isClicked);
     return new HitCircle(this.id, this.note, this.column, this.sampler, this.cy, isClicked);
   }
 }
@@ -182,7 +185,7 @@ class HoldCircle extends PlayableCircle<IHoldCircle> implements IHoldCircle {
       this.note,
       this.column,
       this.sampler,
-      this.cy + Constants.TRAVEL_Y_PER_TICK,
+      this.cy + Constants.PIXELS_PER_TICK,
       this.isClicked,
     );
   }
@@ -218,7 +221,7 @@ class StarCircle extends PlayableCircle<IStarCircle> implements IStarCircle {
         r: NoteConstants.RADIUS,
         cx: `${this.cx}%`,
         class: NoteConstants.CLASS_NAME + " star",
-        fill: Constants.STAR_COLOR,
+        fill: Star.COLOR,
       });
       rootSVG.appendChild(circle);
       return circle;
@@ -230,17 +233,13 @@ class StarCircle extends PlayableCircle<IStarCircle> implements IStarCircle {
   }
 
   onClick(s: State): State {
-    const newCombo = s.combo + 1;
-    const newMultiplier = calculateMultiplier(newCombo, s.multiplier);
-    const newScore = s.score + Constants.SCORE_PER_HIT * newMultiplier;
+    const updatedState = this.updateStateWithScore(s);
     return {
-      ...s,
-      score: newScore,
-      multiplier: s.starPhase ? newMultiplier : newMultiplier + Constants.STAR_MULTIPLIER,
-      combo: newCombo,
+      ...updatedState,
+      multiplier: s.starPhase ? updatedState.multiplier : updatedState.multiplier + Star.MULTIPLIER,
       starPhase: true,
       starDuration: 0,
-      delay: s.starPhase ? s.delay : s.delay + Constants.STAR_DELAY,
+      delay: s.starPhase ? s.delay : s.delay + Star.DELAY,
     };
   }
 
@@ -250,7 +249,7 @@ class StarCircle extends PlayableCircle<IStarCircle> implements IStarCircle {
       this.note,
       this.column,
       this.sampler,
-      this.cy + Constants.TRAVEL_Y_PER_TICK,
+      this.cy + Constants.PIXELS_PER_TICK,
       this.isClicked,
     );
   }
@@ -302,14 +301,14 @@ class Tail implements ITail {
   }
 
   isActive(): boolean {
-    return this.y1 < Constants.POINT_Y;
+    return this.y1 < Constants.TARGET_Y;
   }
 
   moveTail(): Tail {
-    const movedY1 = this.y1 + Constants.TRAVEL_Y_PER_TICK;
-    const newY1 = this.isClicked() ? Math.min(movedY1, Constants.POINT_Y) : movedY1;
-    const movedY2 = this.y2 + Constants.TRAVEL_Y_PER_TICK;
-    const newY2 = this.isClicked() ? Math.min(movedY2, Constants.POINT_Y) : movedY2;
+    const movedY1 = this.y1 + Constants.PIXELS_PER_TICK;
+    const newY1 = this.isClicked() ? Math.min(movedY1, Constants.TARGET_Y) : movedY1;
+    const movedY2 = this.y2 + Constants.PIXELS_PER_TICK;
+    const newY2 = this.isClicked() ? Math.min(movedY2, Constants.TARGET_Y) : movedY2;
 
     return new Tail(this.id, this.x, newY1, newY2, this.circle);
   }
@@ -318,8 +317,8 @@ class Tail implements ITail {
     return this.circle.isClicked;
   }
 
-  setUnclicked(): ITail {
-    return new Tail(this.id, this.x, this.y1, this.y2, this.circle.setClicked(false));
+  setClicked(isClicked: boolean): ITail {
+    return new Tail(this.id, this.x, this.y1, this.y2, this.circle.setClicked(isClicked));
   }
 
   updateBodyView(rootSVG: HTMLElement) {
@@ -346,7 +345,7 @@ class Tail implements ITail {
     attr(tail, {
       y1: this.y1,
       y2: this.y2,
-      "stroke-opacity": this.y2 === Constants.POINT_Y && this.isClicked() ? "1" : "0.25",
+      "stroke-opacity": this.y2 === Constants.TARGET_Y && this.isClicked() ? "1" : "0.25",
     });
   }
 }
@@ -373,10 +372,10 @@ class BackgroundCircle extends Circle implements IBackgroundCircle {
   }
 
   isActive(): boolean {
-    return this.timePassed + Constants.TICK_RATE_MS <= Constants.TRAVEL_MS;
+    return this.timePassed + Constants.TICK_INTERVAL <= Constants.NOTE_TRAVEL_TIME;
   }
 
   tickCircle(): IBackgroundCircle {
-    return new BackgroundCircle(this.id, this.note, this.sampler, this.timePassed + Constants.TICK_RATE_MS);
+    return new BackgroundCircle(this.id, this.note, this.sampler, this.timePassed + Constants.TICK_INTERVAL);
   }
 }

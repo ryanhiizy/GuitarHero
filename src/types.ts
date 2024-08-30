@@ -1,22 +1,22 @@
-export { Constants, Viewport, NoteConstants };
+export { Constants, Viewport, NoteConstants, Star };
 export type {
   Note,
-  ClickKey,
-  ExtraKey,
   Event,
   State,
+  ITail,
+  Action,
   ICircle,
+  ClickKey,
+  ExtraKey,
+  RandomNote,
   IHitCircle,
   IHoldCircle,
-  IBackgroundCircle,
-  Action,
-  ITail,
-  IPlayableCircle,
-  PlayableCircles,
-  RandomNote,
   IStarCircle,
   GroupedNote,
   GameSpeedType,
+  PlayableCircles,
+  IPlayableCircle,
+  IBackgroundCircle,
 };
 
 import * as Tone from "tone";
@@ -24,36 +24,47 @@ import * as Tone from "tone";
 /** Constants */
 
 const Constants = {
-  TICK_RATE_MS: 5,
-  SONG_NAME: "RockinRobin",
+  TICK_INTERVAL: 5,
+  SONG_NAME: "SleepingBeauty",
   MAX_MIDI_VELOCITY: 127,
-  NUMBER_OF_COLUMNS: 4,
+  NUM_COLUMNS: 4,
   COLUMN_WIDTH: 20,
-  NOTE_COLORS: ["green", "red", "blue", "yellow"],
-  COLUMN_KEYS: ["KeyA", "KeyS", "KeyK", "KeyL"],
   S_TO_MS: 1000,
-  TRAVEL_MS: 500,
-  EXPIRED_Y: 430,
-  POINT_Y: 350,
-  TRAVEL_Y_PER_TICK: 3.5,
+  NOTE_EXPIRE_Y: 430,
+  TARGET_Y: 350,
   CLICK_RANGE_Y: 50,
   SCORE_PER_HIT: 10,
   MULTIPLIER_INCREMENT: 0.2,
-  COMBO_FOR_MULTIPLIER: 10,
+  COMBO_TRESHOLD: 10,
   MIN_HOLD_DURATION: 1000,
+
+  // Change to 1000 and 0.7 if too fast
+  NOTE_TRAVEL_TIME: 500,
+  PIXELS_PER_TICK: 3.5,
+
+  NOTE_COLORS: ["green", "red", "blue", "yellow"],
+  COLUMN_KEYS: ["KeyA", "KeyS", "KeyK", "KeyL"],
   INSTRUMENTS: ["bass-electric", "flute", "piano", "saxophone", "trombone", "trumpet", "violin"],
-  SEED: {
+  SEEDS: {
     KeyA: 999,
     KeyS: 888,
     KeyK: 777,
     KeyL: 333,
   },
-  STAR_DURATION: 5000,
-  STAR_CHANCE: 0.05,
-  STAR_COLOR: "cyan",
-  STAR_MULTIPLIER: 3,
-  STAR_DELAY: -25,
+  SPEED_FACTORS: {
+    slow: 0.5,
+    default: 1,
+    fast: -0.5,
+  },
 } as const;
+
+const Star = {
+  DELAY: -25,
+  CHANCE: 0.05,
+  COLOR: "cyan",
+  MULTIPLIER: 3,
+  MAX_DURATION: 5000,
+};
 
 const Viewport = {
   CANVAS_WIDTH: 200,
@@ -72,7 +83,7 @@ type ClickKey = "KeyA" | "KeyS" | "KeyK" | "KeyL";
 
 type ExtraKey = "KeyO" | "KeyP" | "KeyR";
 
-type Event = "keydown" | "keyup" | "keypress";
+type Event = "keydown" | "keyup";
 
 /** Types */
 
@@ -88,7 +99,6 @@ type State = Readonly<{
   playableCircles: ReadonlyArray<PlayableCircles>;
   bgCircles: ReadonlyArray<IBackgroundCircle>;
   random: ReadonlyArray<RandomNote>;
-
   clickedCircles: ReadonlyArray<PlayableCircles>;
 
   exit: ReadonlyArray<PlayableCircles>;
@@ -119,6 +129,22 @@ type PlayableCircles = IPlayableCircle<IHitCircle> | IPlayableCircle<IHoldCircle
 type GroupedNote = [relativeStartTime: number, ...notes: ReadonlyArray<Note>];
 type GameSpeedType = "slow" | "default" | "fast";
 
+/** Interfaces */
+
+/**
+ * Tickable objects modify state on each tick
+ */
+interface Tickable {
+  tick(s: State): State;
+}
+
+/**
+ * Actions modify state
+ */
+interface Action {
+  apply(s: State): State;
+}
+
 interface ICircle extends Action, Tickable {
   id: number;
   note: Note;
@@ -134,6 +160,7 @@ interface IPlayableCircle<T extends IPlayableCircle<T>> extends ICircle {
   isClicked: boolean;
 
   onClick(s: State): State;
+  updateStateWithScore(s: State): State;
   updateBodyView(rootSVG: HTMLElement): void;
   setRandomDuration(): T;
   setClicked(isClicked: boolean): T;
@@ -158,17 +185,6 @@ interface ITail extends Action, Tickable {
 
   stopNote(): void;
   isClicked(): boolean;
-  setUnclicked(): ITail;
+  setClicked(isClicked: boolean): ITail;
   updateBodyView(rootSVG: HTMLElement): void;
-}
-
-interface Tickable {
-  tick(s: State): State;
-}
-
-/**
- * Actions modify state
- */
-interface Action {
-  apply(s: State): State;
 }

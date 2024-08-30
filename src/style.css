@@ -122,6 +122,10 @@ svg rect {
   filter: drop-shadow(0 0 5px rgba(255, 255, 255, 0.8));
 }
 
+.starPhase {
+  box-shadow: 0em 0em 0.5em rgb(0, 255, 255);
+}
+
 .hidden {
   visibility: hidden;
 }
