@@ -184,6 +184,13 @@ interface IPlayableCircle<T extends IPlayableCircle<T>> extends ICircle {
   column: number;
   isClicked: boolean;
 
+  /**
+   * Updates state with the circle's behavior when clicked.
+   * e.g. Star circles speed up the game when clicked.
+   *
+   * @param s input State
+   * @returns updated State
+   */
   onClick(s: State): State;
   updateBodyView(rootSVG: HTMLElement): void;
   setRandomDuration(): T;
