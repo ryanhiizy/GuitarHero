@@ -1,9 +1,27 @@
-export { Tick, Pause, GameEnd, GameSpeed, ClickCircle, reduceState, initialState, ReleaseCircle };
+export {
+  Tick,
+  Pause,
+  GameEnd,
+  GameSpeed,
+  reduceState,
+  ClickCircle,
+  initialState,
+  ReleaseCircle,
+};
 
 import * as Tone from "tone";
 import { Tail } from "./circle";
 import { calculateMultiplier, generateRandomNote, not } from "./util";
-import { Star, ITail, State, Action, ICircle, ClickKey, Constants, PlayableCircles } from "./types";
+import {
+  Star,
+  ITail,
+  State,
+  Action,
+  ICircle,
+  ClickKey,
+  Constants,
+  PlayableCircles,
+} from "./types";
 
 const initialState: State = {
   score: 0,
@@ -16,8 +34,8 @@ const initialState: State = {
   circles: [],
   playableCircles: [],
   bgCircles: [],
-  random: [],
   clickedCircles: [],
+  random: [],
 
   exit: [],
   exitTails: [],
@@ -30,48 +48,75 @@ const initialState: State = {
 } as const;
 
 class Tick implements Action {
+  /**
+   * Represents a tick in the game loop.
+   *
+   * @param s input State
+   * @returns updated State
+   */
   apply(s: State): State {
-    const resetState = {
-      ...s,
-      tails: [],
-      playableCircles: [],
-      bgCircles: [],
-      exit: [],
-      exitTails: [],
-    };
+    const resetState = this.resetState(s);
+    const stateAfterCircleTicks = s.circles.reduce(tickCircle, resetState);
+    const stateAfterTailTicks = s.tails.reduce(tickTail, stateAfterCircleTicks);
 
-    const updatedStateAfterCircles = s.circles.reduce(tickCircle, resetState);
-    const updatedStateAfterTails = s.tails.reduce(tickTail, updatedStateAfterCircles);
+    const {
+      exit,
+      time,
+      delay,
+      combo,
+      starPhase,
+      bgCircles,
+      multiplier,
+      starDuration,
+      playableCircles,
+    } = stateAfterTailTicks;
 
-    const updatedStarDuration = s.starPhase ? s.starDuration + Constants.TICK_INTERVAL : 0;
-    const isStarPhaseActive = s.starPhase && updatedStarDuration < Star.MAX_DURATION;
+    const updatedStarDuration = starPhase
+      ? starDuration + Constants.TICK_RATE_MS
+      : 0;
+    const isStarPhaseActive =
+      starPhase && updatedStarDuration < Star.MAX_DURATION;
 
-    const unclickedExit = s.exit.filter((circle) => !circle.isClicked);
-    const updatedCombo = unclickedExit.length === 0 ? s.combo : 0;
+    const unclickedExitCircles = exit.filter(not(this.isClicked));
+    const updatedCombo = unclickedExitCircles.length === 0 ? combo : 0;
 
     const baseMultiplier = isStarPhaseActive ? Star.MULTIPLIER + 1 : 1;
-    const newMultiplier = updatedCombo === 0 ? baseMultiplier : s.multiplier;
+    const intermediateMultiplier =
+      updatedCombo === 0 ? baseMultiplier : multiplier;
     const updatedMultiplier =
       updatedStarDuration === Star.MAX_DURATION
-        ? parseFloat((newMultiplier - Star.MULTIPLIER).toFixed(2))
-        : newMultiplier;
+        ? intermediateMultiplier - Star.MULTIPLIER
+        : intermediateMultiplier;
 
-    const incrementedTime = s.time + Constants.TICK_INTERVAL;
-    const updatedDelay = updatedStarDuration === Star.MAX_DURATION ? s.delay - Star.DELAY : s.delay;
+    const updatedTime = time + Constants.TICK_RATE_MS;
+
+    const updatedDelay =
+      updatedStarDuration === Star.MAX_DURATION ? delay - Star.DELAY : delay;
 
     return {
-      ...updatedStateAfterTails,
+      ...stateAfterTailTicks,
       combo: updatedCombo,
-      multiplier: updatedMultiplier,
-      time: incrementedTime,
-      circles: [...s.playableCircles, ...s.bgCircles],
+      multiplier: parseFloat(updatedMultiplier.toFixed(1)),
+      time: updatedTime,
+      delay: updatedDelay,
+      circles: [...playableCircles, ...bgCircles],
       clickedCircles: [],
       random: [],
       starPhase: isStarPhaseActive,
-      starDuration: s.starPhase ? updatedStarDuration : 0,
-      delay: updatedDelay,
+      starDuration: starPhase ? updatedStarDuration : 0,
     };
   }
+
+  resetState = (s: State): State => ({
+    ...s,
+    tails: [],
+    playableCircles: [],
+    bgCircles: [],
+    exit: [],
+    exitTails: [],
+  });
+
+  isClicked = (circle: PlayableCircles) => circle.isClicked;
 }
 
 class ClickCircle implements Action {
@@ -81,71 +126,98 @@ class ClickCircle implements Action {
     public readonly samples: { [key: string]: Tone.Sampler },
   ) {}
 
+  /**
+   * Handles the click of a key.
+   *
+   * @param s input State
+   * @returns modified State
+   */
   apply(s: State): State {
-    const column = Constants.COLUMN_KEYS.indexOf(this.key);
-    const closeCircles = s.playableCircles.filter(this.isWithinClickRange(column));
+    const { playableCircles, clickedCircles, tails, random, circles } = s;
 
-    if (closeCircles.length === 0) return this.handleMissedClick(s);
+    const columnIndex = Constants.COLUMN_KEYS.indexOf(this.key);
+    const closeCircles = playableCircles.filter(this.isClose(columnIndex));
+
+    if (closeCircles.length === 0)
+      return {
+        ...s,
+        random: [...random, generateRandomNote(this.seed, this.samples)],
+      };
 
     const closestCircle = this.findClosestCircle(closeCircles);
-    const filteredCircles = s.circles.filter(not(this.isClosestCircle(closestCircle)));
-    const filteredPlayableCircles = s.playableCircles.filter(not(this.isClosestCircle(closestCircle)));
+    const filteredCircles = circles.filter(
+      not(this.isClosestCircle(closestCircle)),
+    );
+    const filteredPlayableCircles = playableCircles.filter(
+      not(this.isClosestCircle(closestCircle)),
+    );
     const clickedClosestCircle = closestCircle.setClicked(true);
 
-    const updatedTails = s.tails.map(this.updateTail(clickedClosestCircle));
+    const updateTails = tails.map(this.updateTail(clickedClosestCircle));
 
     const updateClosestCircle = this.isMisaligned(clickedClosestCircle)
       ? clickedClosestCircle.setRandomDuration()
       : clickedClosestCircle;
 
-    const updateScoreState = clickedClosestCircle.onClick(s);
+    // Different circles have different behaviours when clicked
+    const stateAfterCircleClicked = clickedClosestCircle.onClick(s);
 
     return {
-      ...updateScoreState,
-      tails: updatedTails,
+      ...stateAfterCircleClicked,
+      tails: updateTails,
       circles: [...filteredCircles, updateClosestCircle],
       playableCircles: filteredPlayableCircles,
-      clickedCircles: [...s.clickedCircles, updateClosestCircle],
+      clickedCircles: [...clickedCircles, updateClosestCircle],
     };
   }
 
-  isWithinClickRange = (column: number) => (circle: PlayableCircles) =>
-    circle.column === column && Math.abs(circle.cy - Constants.TARGET_Y) <= Constants.CLICK_RANGE_Y;
+  isClose = (column: number) => (circle: PlayableCircles) =>
+    circle.column === column &&
+    Math.abs(circle.cy - Constants.TARGET_Y) <= Constants.CLICK_RANGE_Y;
 
-  handleMissedClick = (s: State): State => ({
-    ...s,
-    random: [...s.random, generateRandomNote(this.seed, this.samples)],
-  });
-
-  findClosestCircle = (circles: ReadonlyArray<PlayableCircles>): PlayableCircles =>
+  findClosestCircle = (
+    circles: ReadonlyArray<PlayableCircles>,
+  ): PlayableCircles =>
     circles.reduce((closest, circle) => {
       const closestDistance = Math.abs(closest.cy - Constants.TARGET_Y);
       const distance = Math.abs(circle.cy - Constants.TARGET_Y);
       return distance < closestDistance ? circle : closest;
     });
 
-  isClosestCircle = (closest: ICircle) => (circle: ICircle) => circle === closest;
+  isMisaligned = (circle: PlayableCircles) =>
+    Math.abs(circle.cy - Constants.TARGET_Y) > Constants.CLICK_RANGE_Y / 2;
 
-  isMisaligned = (circle: PlayableCircles) => Math.abs(circle.cy - Constants.TARGET_Y) > Constants.CLICK_RANGE_Y / 2;
+  isClosestCircle = (closest: ICircle) => (circle: ICircle) =>
+    circle === closest;
 
   updateTail =
     (closestCircle: PlayableCircles) =>
     (tail: ITail): ITail =>
-      tail.circle.id === closestCircle.id ? new Tail(tail.id, tail.x, tail.y1, tail.y2, closestCircle) : tail;
+      tail.circle.id === closestCircle.id
+        ? new Tail(tail.id, tail.x, tail.y1, tail.y2, closestCircle)
+        : tail;
 }
 
 class ReleaseCircle implements Action {
   constructor(public readonly key: ClickKey) {}
 
+  /**
+   * Handles the release of a key.
+   *
+   * @param s input State
+   * @returns updated State
+   */
   apply(s: State): State {
-    const column = Constants.COLUMN_KEYS.indexOf(this.key);
-    const closeTails = s.tails.filter(this.isCloseTail(column));
+    const { tails, combo, multiplier, exitTails, score } = s;
+
+    const columnIndex = Constants.COLUMN_KEYS.indexOf(this.key);
+    const closeTails = tails.filter(this.isClose(columnIndex));
 
     if (closeTails.length === 0) return s;
 
     const closestTail = this.findClosestTail(closeTails);
     const unclickedClosestTail = closestTail.setClicked(false);
-    const filteredTails = s.tails.filter(not(this.isClosestTail(closestTail)));
+    const filteredTails = tails.filter(not(this.isClosestTail(closestTail)));
 
     if (!this.isWithinRange(closestTail)) {
       return {
@@ -156,18 +228,24 @@ class ReleaseCircle implements Action {
       };
     }
 
-    const updatedStateWithScore = unclickedClosestTail.circle.updateStateWithScore(s);
+    const updatedCombo = combo + 1;
+    const updatedMultiplier = calculateMultiplier(updatedCombo, multiplier);
+    const updatedScore = score + Constants.SCORE_PER_HIT * updatedMultiplier;
 
     return {
-      ...updatedStateWithScore,
+      ...s,
+      score: updatedScore,
+      multiplier: updatedMultiplier,
+      combo: updatedCombo,
       tails: filteredTails,
-      exitTails: [...s.exitTails, unclickedClosestTail],
+      exitTails: [...exitTails, unclickedClosestTail],
     };
   }
 
-  getRange = (tail: ITail) => Math.abs(tail.y1 - Constants.TARGET_Y);
+  isClose = (column: number) => (tail: ITail) =>
+    tail.isClicked() && tail.circle.column === column;
 
-  isCloseTail = (column: number) => (tail: ITail) => tail.isClicked() && tail.circle.column === column;
+  getRange = (tail: ITail) => Math.abs(tail.y1 - Constants.TARGET_Y);
 
   findClosestTail = (tails: ReadonlyArray<ITail>): ITail =>
     tails.reduce((closest, tail) => {
@@ -178,12 +256,19 @@ class ReleaseCircle implements Action {
 
   isClosestTail = (closest: ITail) => (tail: ITail) => tail === closest;
 
-  isWithinRange = (tail: ITail) => this.getRange(tail) <= Constants.CLICK_RANGE_Y;
+  isWithinRange = (tail: ITail) =>
+    this.getRange(tail) <= Constants.CLICK_RANGE_Y;
 }
 
 class GameSpeed implements Action {
   constructor(public readonly delay: number) {}
 
+  /**
+   * Update the state to provide the initial game speed.
+   *
+   * @param s input State
+   * @returns updated State
+   */
   apply(s: State): State {
     return {
       ...s,
@@ -195,16 +280,32 @@ class GameSpeed implements Action {
 class Pause implements Action {
   constructor(public readonly isPaused: boolean) {}
 
+  /**
+   * Update the state to match the current pause status.
+   *
+   * @param s input State
+   * @returns updated State
+   */
   apply(s: State): State {
+    // If the game is paused, set all tails to not clicked.
+    // This is to stop notes from being played continuously when the game is paused.
     return {
       ...s,
-      tails: s.tails.map((tail) => tail.setClicked(false)),
+      tails: this.isPaused
+        ? s.tails.map((tail) => tail.setClicked(false))
+        : s.tails,
       paused: this.isPaused,
     };
   }
 }
 
 class GameEnd implements Action {
+  /**
+   * Update the state to indicate the game has ended.
+   *
+   * @param s input State
+   * @returns updated State
+   */
   apply(s: State): State {
     return {
       ...s,
@@ -213,16 +314,31 @@ class GameEnd implements Action {
   }
 }
 
+/**
+ * Update the state when a tail is ticked.
+ *
+ * @param s input State
+ * @param tail tail to tick
+ * @returns updated State
+ */
 const tickTail = (s: State, tail: ITail): State => {
   return tail.tick(s);
 };
 
+/**
+ * Update the state when a circle is ticked.
+ *
+ * @param s input State
+ * @param circle circle to tick
+ * @returns updated State
+ */
 const tickCircle = (s: State, circle: ICircle): State => {
   return circle.tick(s);
 };
 
 /**
- * state transducer
+ * State transducer.
+ *
  * @param s input State
  * @param action type of action to apply to the State
  * @returns a new State
