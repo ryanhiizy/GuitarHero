@@ -44,6 +44,8 @@ NOTE: Star phase can be modified to slow down the song instead by changing the d
 
 Uses an observable to react to button presses and calculates the amount of delay between notes to speed up or slow down the song by 1.5x and 0.5x respectively. This delay is stored in the state as the base delay using actions. The note observable retrieves this delay to calculate the new delay between notes.
 
+NOTE: Slow mode can make some songs unplayable because a lot of notes become hold notes and they start overlapping.
+
 ## References
 
 Tim Dwyer, Nitin Mathew, Garvin, Mariusz Skoneczko, baker-mg, Alvin Zhao, haotongwang, Angus Trau, James Sully, Yusuf Ades, rhys-newbury, Blake, Jackson Wain, Jin Heng Yap, & aiman. (2021). tgdwyer/tgdwyer.github.io: Class of Semester 2, 2021 (v1.0). Zenodo. https://doi.org/10.5281/zenodo.5226211
