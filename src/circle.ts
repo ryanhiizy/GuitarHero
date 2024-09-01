@@ -496,7 +496,7 @@ class Tail implements ITail {
       y1: this.y1,
       y2: this.y2,
       "stroke-opacity":
-        this.y2 === Constants.TARGET_Y && this.isClicked() ? "1" : "0.25",
+        this.y2 === Constants.TARGET_Y && this.isClicked() ? "1" : "0.25", // Opaque if the tail is clicked
     });
   }
 }

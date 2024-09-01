@@ -101,6 +101,8 @@ export function main(
   const pauseAction$ = pause$.pipe(map((isPaused) => new Pause(isPaused)));
   const pass$ = pause$.pipe(filter((isPaused) => !isPaused));
 
+  // keyAction$ creates observables for keydown and keyup events, returning
+  // an action based on the key pressed. It also passes a seed to the action.
   const keyAction$ =
     (e: Event) =>
     (f: (code: ClickKey, seed: number) => Action) =>
