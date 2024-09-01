@@ -82,6 +82,11 @@ export function main(
   const groupedNotes = getGroupedNotes(csvArray);
   const gameDelay = calculateDelay(csvArray, gameSpeed);
 
+  /**
+   * Create observables for keydown and keyup events, filtering out repeat events.
+   *
+   * @see https://stackblitz.com/edit/asteroids2023
+   */
   const key$ = (e: Event, k: ClickKey | ExtraKey) =>
     fromEvent<KeyboardEvent>(document, e).pipe(
       filter(({ code }) => code === k),
@@ -102,7 +107,8 @@ export function main(
   const pass$ = pause$.pipe(filter((isPaused) => !isPaused));
 
   // keyAction$ creates observables for keydown and keyup events, returning
-  // an action based on the key pressed. It also passes a seed to the action.
+  // an action based on the key pressed. It also passes a seed to the action
+  // and can be paused.
   const keyAction$ =
     (e: Event) =>
     (f: (code: ClickKey, seed: number) => Action) =>
