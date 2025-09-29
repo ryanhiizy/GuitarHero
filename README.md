@@ -17,7 +17,7 @@ The game manages state, input, animation, and audio playback through Observables
 - **Language**: TypeScript
 - **Libraries**: RxJS, Tone.js (audio)
 - **Architecture**: FRP + MVC state separation
-- **Build Tools**: Vite, NPM
+- **Build Tools**: Vite, npm
 
 ## Controls
 
