@@ -29,7 +29,7 @@ The game manages state, input, animation, and audio playback through Observables
 - Resume: `O`
 - Restart: `R`
 
-## Installation & Usage
+## Installation
 
 1. Clone the repository:
 
