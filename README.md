@@ -1,6 +1,6 @@
 # Guitar Hero
 
-A browser-based rhythm game inspired by Guitar Hero, implemented with **TypeScript** and **RxJS** using functional reactive programming (FRP).
+A browser-based rhythm game inspired by Guitar Hero, implemented with TypeScript and RxJS using functional reactive programming (FRP).
 The game manages state, input, animation, and audio playback through Observables.
 
 ## Features
@@ -18,6 +18,16 @@ The game manages state, input, animation, and audio playback through Observables
 - **Libraries**: RxJS, Tone.js (audio)
 - **Architecture**: FRP + MVC state separation
 - **Build Tools**: Vite, NPM
+
+## Controls
+
+- Green: `A`
+- Red: `S`
+- Blue: `K`
+- Yellow: `L`
+- Pause: `P`
+- Resume: `O`
+- Restart: `R`
 
 ## Installation & Usage
 
@@ -41,16 +51,6 @@ The game manages state, input, animation, and audio playback through Observables
    ```
 
    Open the printed URL in your browser.
-
-## Controls
-
-- Green: `A`
-- Red: `S`
-- Blue: `K`
-- Yellow: `L`
-- Pause: `P`
-- Resume: `O`
-- Restart: `R`
 
 ## Authors
 
