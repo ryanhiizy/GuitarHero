@@ -25,7 +25,7 @@ import * as Tone from "tone";
 
 const Constants = {
   TICK_RATE_MS: 5,
-  SONG_NAME: "SleepingBeauty",
+  SONG_NAME: "RockinRobin",
   MAX_MIDI_VELOCITY: 127,
   COLORS: ["green", "red", "blue", "yellow"],
 
